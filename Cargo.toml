@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "light-client-app-sample",
+    "near-light-client",
+]

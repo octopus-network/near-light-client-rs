@@ -1,0 +1,7 @@
+[near_rpc]
+rpc_endpoint = "https://rpc.testnet.near.org"
+max_retries = 4
+
+[state_data]
+data_folder = "./tmp/chain_data/testnet"
+max_cached_heights = 600
