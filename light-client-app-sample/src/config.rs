@@ -35,15 +35,12 @@ impl Default for LightClientAppSampleConfig {
 pub struct NearRpcSection {
     /// Endpoint of the RPC service. Should be a valid URL.
     pub rpc_endpoint: String,
-    /// The max times of automatically retry when query RPC service.
-    pub max_retries: u8,
 }
 
 impl Default for NearRpcSection {
     fn default() -> Self {
         Self {
             rpc_endpoint: "https://rpc.testnet.near.org".to_owned(),
-            max_retries: 5,
         }
     }
 }

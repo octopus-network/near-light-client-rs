@@ -1,6 +1,5 @@
 [near_rpc]
 rpc_endpoint = "https://rpc.testnet.near.org"
-max_retries = 5
 
 [state_data]
 data_folder = "./tmp/chain_data/testnet"

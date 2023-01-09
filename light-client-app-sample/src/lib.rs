@@ -21,3 +21,4 @@ pub mod config;
 pub mod error;
 pub mod light_client;
 pub mod prelude;
+pub mod utils;
