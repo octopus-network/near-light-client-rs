@@ -7,6 +7,6 @@ The crate `near-light-client` defines all necessary interfaces/functions for NEA
 The crate `light-client-app-sample` provides a basic implementation of a NEAR light client instance, which uses files to store the state data. It's a CLI application based on [abscissa](https://docs.rs/abscissa/0.7.0/abscissa/). It provides the following sample functions:
 
 * Sub-command `start` - to start a NEAR light client instance which will cache a certain range of heights of light client block headers and block producers of epochs in files.
-* Sub-command `validate` - to validate state data of a contract at a certain height.
+* Sub-command `validate-state` - to validate state data of a contract at a certain height.
 * Sub-command `view-bps` - to print the block producers data corresponding to a certain epoch.
 * Sub-command `view-head` - to print the head data at a certain height.

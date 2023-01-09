@@ -36,14 +36,6 @@ pub enum ClientStateVerificationError {
     MissingCachedEpochBlockProducers {
         epoch_id: CryptoHash,
     },
-    MissingCachedNextEpochBlockProducers {
-        epoch_id: CryptoHash,
-    },
-    InvalidValidatorSignatureCount {
-        sig_count: usize,
-        bps_count: usize,
-        next_bps_count: usize,
-    },
     InvalidValidatorSignature {
         signature: Signature,
         pubkey: PublicKey,
@@ -156,7 +148,6 @@ pub trait NearLightClient {
         let mut total_stake = 0;
         let mut approved_stake = 0;
 
-        let epoch_block_producers: Vec<ValidatorStakeView>;
         let bps =
             self.get_epoch_block_producers(&new_head.light_client_block_view.inner_lite.epoch_id);
         if bps.is_none() {
@@ -165,42 +156,9 @@ pub trait NearLightClient {
                     epoch_id: new_head.light_client_block_view.inner_lite.epoch_id,
                 },
             );
-        } else {
-            if new_head.light_client_block_view.approvals_after_next.len()
-                != bps.as_ref().unwrap().len()
-            {
-                let next_bps = self.get_epoch_block_producers(
-                    &new_head.light_client_block_view.inner_lite.next_epoch_id,
-                );
-                if next_bps.is_none() {
-                    return Err(
-                        ClientStateVerificationError::MissingCachedNextEpochBlockProducers {
-                            epoch_id: new_head.light_client_block_view.inner_lite.next_epoch_id,
-                        },
-                    );
-                } else {
-                    if new_head.light_client_block_view.approvals_after_next.len()
-                        != next_bps.as_ref().unwrap().len()
-                    {
-                        return Err(
-                            ClientStateVerificationError::InvalidValidatorSignatureCount {
-                                sig_count: new_head
-                                    .light_client_block_view
-                                    .approvals_after_next
-                                    .len(),
-                                bps_count: bps.as_ref().unwrap().len(),
-                                next_bps_count: next_bps.as_ref().unwrap().len(),
-                            },
-                        );
-                    } else {
-                        epoch_block_producers = next_bps.unwrap();
-                    }
-                }
-            } else {
-                epoch_block_producers = bps.unwrap();
-            }
         }
 
+        let epoch_block_producers = bps.unwrap();
         for (maybe_signature, block_producer) in new_head
             .light_client_block_view
             .approvals_after_next

@@ -6,7 +6,7 @@ use std::ops::Deref;
 use crate::light_client::{near_rpc_client_wrapper::NearRpcClientWrapper, LightClient};
 /// App-local prelude includes `app_reader()`/`app_writer()`/`app_config()`
 /// accessors along with logging macros. Customize as you see fit.
-use crate::prelude::*;
+use crate::{info_with_time, prelude::*};
 use abscissa_core::{Command, Runnable};
 use near_light_client::near_types::trie::RawTrieNodeWithSize;
 use near_light_client::NearLightClient;
@@ -20,7 +20,7 @@ use near_primitives::types::{AccountId, BlockId};
 ///
 /// <https://docs.rs/clap/>
 #[derive(clap::Parser, Command, Debug)]
-pub struct ValidateCmd {
+pub struct ValidateStateCmd {
     pub block_height: u64,
     pub near_account: String,
     /// base64 formatted storage key
@@ -29,7 +29,7 @@ pub struct ValidateCmd {
     pub value: String,
 }
 
-impl Runnable for ValidateCmd {
+impl Runnable for ValidateStateCmd {
     /// Start the application.
     fn run(&self) {
         abscissa_tokio::run(
@@ -79,12 +79,12 @@ async fn validate_storage_state(
         "The value on chain is different from the given value."
     );
     let proofs: Vec<Vec<u8>> = result.proof.iter().map(|proof| proof.to_vec()).collect();
-    status_info!("Validating", "Proof data array length: {}", proofs.len());
+    info_with_time!("Proof data array length: {}", proofs.len());
     let nodes: Vec<RawTrieNodeWithSize> = proofs
         .iter()
         .map(|bytes| RawTrieNodeWithSize::decode(bytes).unwrap())
         .collect();
-    status_info!("Validating", "Proof data decoded: {:?}", nodes);
+    info_with_time!("Proof data decoded: {:?}", nodes);
     match light_client.validate_contract_state(
         block_height,
         near_account,

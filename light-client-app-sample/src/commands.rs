@@ -11,11 +11,13 @@
 //! application's configuration file.
 
 mod start;
-mod validate;
+mod validate_state;
 mod view_bps;
 mod view_head;
 
-use self::{start::StartCmd, validate::ValidateCmd, view_bps::ViewBpsCmd, view_head::ViewHeadCmd};
+use self::{
+    start::StartCmd, validate_state::ValidateStateCmd, view_bps::ViewBpsCmd, view_head::ViewHeadCmd,
+};
 use crate::config::LightClientAppSampleConfig;
 use abscissa_core::{config::Override, Command, Configurable, FrameworkError, Runnable};
 use std::path::PathBuf;
@@ -34,7 +36,7 @@ pub enum LightClientAppSampleCmd {
     /// View block producers data corresponding to the given epoch id.
     ViewBps(ViewBpsCmd),
     /// Validate state data corresponding to a storage key of a NEAR account.
-    Validate(ValidateCmd),
+    ValidateState(ValidateStateCmd),
 }
 
 /// Entry point for the application. It needs to be a struct to allow using subcommands!
