@@ -38,27 +38,6 @@ impl NearRpcClientWrapper {
         }
     }
 
-    pub(crate) async fn get_next_light_client_block(
-        &self,
-        last_block_hash: &CryptoHash,
-    ) -> anyhow::Result<near_primitives::views::LightClientBlockView> {
-        retry(|| async {
-            let query_resp = self
-                .query(
-                    &methods::next_light_client_block::RpcLightClientNextBlockRequest {
-                        last_block_hash: last_block_hash.clone(),
-                    },
-                )
-                .await?;
-            if query_resp.is_some() {
-                anyhow::Ok(query_resp.unwrap())
-            } else {
-                anyhow::bail!("Failed to get next light client block. Response is empty.")
-            }
-        })
-        .await
-    }
-
     pub(crate) async fn query_broadcast_tx(
         &self,
         method: &methods::broadcast_tx_commit::RpcBroadcastTxCommitRequest,
@@ -122,51 +101,63 @@ impl NearRpcClientWrapper {
         .await
     }
 
+    pub(crate) async fn get_next_light_client_block(
+        &self,
+        last_block_hash: &CryptoHash,
+    ) -> anyhow::Result<near_primitives::views::LightClientBlockView> {
+        let query_resp = self
+            .query(
+                &methods::next_light_client_block::RpcLightClientNextBlockRequest {
+                    last_block_hash: last_block_hash.clone(),
+                },
+            )
+            .await?;
+        if query_resp.is_some() {
+            anyhow::Ok(query_resp.unwrap())
+        } else {
+            anyhow::bail!("Failed to get next light client block. Response is empty.")
+        }
+    }
+
     pub(crate) async fn view_state_with_proof(
         &self,
         contract_id: AccountId,
         prefix: Option<&[u8]>,
         block_id: Option<BlockId>,
     ) -> anyhow::Result<near_primitives::views::ViewStateResult> {
-        retry(|| async {
-            let block_reference = block_id
-                .clone()
-                .map(Into::into)
-                .unwrap_or_else(|| Finality::None.into());
+        let block_reference = block_id
+            .clone()
+            .map(Into::into)
+            .unwrap_or_else(|| Finality::None.into());
 
-            let query_resp = self
-                .query(&RpcQueryRequest {
-                    block_reference,
-                    request: QueryRequest::ViewState {
-                        account_id: contract_id.clone(),
-                        prefix: StoreKey::from(prefix.map(Vec::from).unwrap_or_default()),
-                        include_proof: true,
-                    },
-                })
-                .await?;
+        let query_resp = self
+            .query(&RpcQueryRequest {
+                block_reference,
+                request: QueryRequest::ViewState {
+                    account_id: contract_id.clone(),
+                    prefix: StoreKey::from(prefix.map(Vec::from).unwrap_or_default()),
+                    include_proof: true,
+                },
+            })
+            .await?;
 
-            match query_resp.kind {
-                QueryResponseKind::ViewState(state) => anyhow::Ok(state),
-                _ => anyhow::bail!(ERR_INVALID_VARIANT),
-            }
-        })
-        .await
+        match query_resp.kind {
+            QueryResponseKind::ViewState(state) => anyhow::Ok(state),
+            _ => anyhow::bail!(ERR_INVALID_VARIANT),
+        }
     }
 
     pub(crate) async fn view_block(&self, block_id: &Option<BlockId>) -> anyhow::Result<BlockView> {
-        retry(|| async {
-            let block_reference = block_id
-                .clone()
-                .map(Into::into)
-                .unwrap_or_else(|| Finality::None.into());
+        let block_reference = block_id
+            .clone()
+            .map(Into::into)
+            .unwrap_or_else(|| Finality::None.into());
 
-            let block_view = self
-                .query(&methods::block::RpcBlockRequest { block_reference })
-                .await?;
+        let block_view = self
+            .query(&methods::block::RpcBlockRequest { block_reference })
+            .await?;
 
-            Ok(block_view)
-        })
-        .await
+        Ok(block_view)
     }
 }
 
@@ -175,7 +166,7 @@ where
     F: FnMut() -> T,
     T: core::future::Future<Output = Result<R, E>>,
 {
-    // Exponential backoff starting w/ 10ms for maximum retry of 4 times with the following delays:
+    // Exponential backoff starting w/ 10ms for maximum retry of 5 times with the following delays:
     //   10, 100, 1000, 10000, 100000 ms
     let retry_strategy = ExponentialBackoff::from_millis(10)
         .map(jitter)

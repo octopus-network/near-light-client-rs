@@ -25,7 +25,7 @@ pub struct ValidateCmd {
     pub near_account: String,
     /// base64 formatted storage key
     pub storage_key: String,
-    /// base64 formated value
+    /// base64 formatted value
     pub value: String,
 }
 
@@ -85,12 +85,12 @@ async fn validate_storage_state(
         .map(|bytes| RawTrieNodeWithSize::decode(bytes).unwrap())
         .collect();
     status_info!("Validating", "Proof data decoded: {:?}", nodes);
-    match light_client.validate_contract_state_proof(
+    match light_client.validate_contract_state(
         block_height,
-        near_account.clone(),
+        near_account,
         key_bytes.as_ref(),
         value_bytes.as_ref(),
-        proofs,
+        &proofs,
     ) {
         Ok(()) => status_ok!("Finished", "Validation succeeded."),
         Err(err) => status_err!(format!("{:?}", err)),

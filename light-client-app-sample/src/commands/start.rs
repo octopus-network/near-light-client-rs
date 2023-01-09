@@ -1,7 +1,5 @@
 //! `start` subcommand - example of how to write a subcommand
 
-use std::time::Duration;
-
 use crate::config::LightClientAppSampleConfig;
 use crate::light_client::utils::produce_light_client_block_view;
 use crate::light_client::{near_rpc_client_wrapper::NearRpcClientWrapper, LightClient};
@@ -9,6 +7,7 @@ use crate::light_client::{near_rpc_client_wrapper::NearRpcClientWrapper, LightCl
 /// accessors along with logging macros. Customize as you see fit.
 use crate::prelude::*;
 use abscissa_core::{config, Command, FrameworkError, Runnable};
+use chrono::Local;
 use near_light_client::{LightClientBlockViewExt, NearLightClient};
 use near_primitives::types::BlockId;
 
@@ -48,44 +47,44 @@ async fn start_light_client() {
     //
     // Keep updating state and save state to file
     //
-    let mut last_block_hash = match light_client.latest_head() {
-        Some(head) => {
-            near_primitives::hash::CryptoHash(head.light_client_block_view.prev_block_hash.0)
-        }
-        None => {
-            let latest_block = rpc_client
-                .view_block(
-                    &light_client
-                        .latest_height()
-                        .map(|height| BlockId::Height(height + 1)),
-                )
-                .await
-                .expect("Failed to get latest block.");
-            latest_block.header.prev_hash
-        }
-    };
+    let mut last_block_hash = get_last_block_hash(&light_client, &rpc_client).await;
     loop {
         let light_client_block_view = rpc_client
             .get_next_light_client_block(&last_block_hash)
             .await
             .expect("Failed to get next light client block.");
-        if light_client_block_view.prev_block_hash == last_block_hash {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            continue;
-        }
-        //
         let head = get_light_client_block_view_ext(&light_client_block_view, &rpc_client).await;
         if light_client
-            .epoch_block_producers(&head.light_client_block_view.inner_lite.epoch_id)
+            .get_epoch_block_producers(&head.light_client_block_view.inner_lite.epoch_id)
             .is_none()
         {
+            status_info!(
+                "Info",
+                "{}\tUpdate state at height: {}, epoch: {}",
+                now(),
+                head.light_client_block_view.inner_lite.height,
+                head.light_client_block_view.inner_lite.epoch_id
+            );
             light_client.update_head(head);
         } else {
-            light_client
-                .validate_and_update_head(head)
-                .expect("Failed to update state of NEAR light client.");
+            status_info!(
+                "Info",
+                "{}\tValidate and update state at height: {}, epoch: {}",
+                now(),
+                head.light_client_block_view.inner_lite.height,
+                head.light_client_block_view.inner_lite.epoch_id
+            );
+            if let Err(err) = light_client.validate_and_update_head(head.clone()) {
+                status_err!(
+                    "Failed to validate state at height {}: {:?}",
+                    head.light_client_block_view.inner_lite.height,
+                    err
+                );
+                light_client.save_failed_head(head);
+                break;
+            }
         }
-        last_block_hash = light_client_block_view.prev_block_hash;
+        last_block_hash = get_last_block_hash(&light_client, &rpc_client).await;
         //
         while light_client.cached_heights().len()
             > APP.config().state_data.max_cached_heights as usize
@@ -93,6 +92,27 @@ async fn start_light_client() {
             light_client.remove_oldest_head();
         }
     }
+}
+
+fn now() -> String {
+    let local = Local::now().naive_local();
+    local.format("%m-%d %H:%M:%S").to_string()
+}
+
+async fn get_last_block_hash(
+    light_client: &LightClient,
+    rpc_client: &NearRpcClientWrapper,
+) -> near_primitives::hash::CryptoHash {
+    rpc_client
+        .view_block(
+            &light_client
+                .latest_height()
+                .map(|height| BlockId::Height(height)),
+        )
+        .await
+        .expect("Failed to get latest block.")
+        .header
+        .hash
 }
 
 async fn get_light_client_block_view_ext(

@@ -17,8 +17,6 @@ pub fn produce_light_client_block_view(
     view_from_near: &near_primitives::views::LightClientBlockView,
     block_view: &BlockView,
 ) -> LightClientBlockViewExt {
-    print_light_client_block_view(&view_from_near);
-    print_block_view(&block_view);
     assert!(
         view_from_near.inner_lite.height == block_view.header.height,
         "Not same height of light client block view and block view."
@@ -81,29 +79,32 @@ pub fn produce_light_client_block_view(
 }
 
 /// Print general info of `LightClientBlockView` with macro `status_info`.
-pub fn print_light_client_block_view(view: &near_primitives::views::LightClientBlockView) {
+pub fn print_light_client_block_view(view: &LightClientBlockView) {
     status_info!(
-        "Updating",
-        "LightClientBlockView: {{ prev_block_hash: {}, height: {}, prev_state_root: {}, epoch_id: {}, next_epoch_id: {} }}",
+        "Info",
+        "LightClientBlockView: {{ prev_block_hash: {}, height: {}, prev_state_root: {}, epoch_id: {}, next_epoch_id: {}, signature_count: {}, next_bps_count: {} }}",
         view.prev_block_hash,
         view.inner_lite.height,
         view.inner_lite.prev_state_root,
         view.inner_lite.epoch_id,
-        view.inner_lite.next_epoch_id
+        view.inner_lite.next_epoch_id,
+        view.approvals_after_next.len(),
+        view.next_bps.as_ref().map_or(0, |bps| bps.len()),
     );
 }
 
 /// Print general info of `BlockView` with macro `status_info`.
 pub fn print_block_view(view: &BlockView) {
     status_info!(
-        "Updating",
-        "BlockView: {{ height: {}, prev_height: {:?}, prev_state_root: {}, epoch_id: {}, next_epoch_id: {}, hash: {}, prev_hash: {} }}",
+        "Info",
+        "BlockView: {{ height: {}, prev_height: {:?}, prev_state_root: {}, epoch_id: {}, next_epoch_id: {}, hash: {}, prev_hash: {}, prev_state_root_of_chunks: {:?} }}",
         view.header.height,
         view.header.prev_height,
         view.header.prev_state_root,
         view.header.epoch_id,
         view.header.next_epoch_id,
         view.header.hash,
-        view.header.prev_hash
+        view.header.prev_hash,
+        view.chunks.iter().map(|h| h.prev_state_root).collect::<Vec<near_primitives::hash::CryptoHash>>(),
     );
 }

@@ -6,7 +6,9 @@ edition = "2021"
 
 [dependencies]
 base64 = "0.20"
+bs58 = "0.4"
 clap = "4"
+chrono = "0.4"
 serde = { version = "1", features = ["serde_derive"] }
 thiserror = "1"
 

@@ -43,7 +43,7 @@ impl Default for NearRpcSection {
     fn default() -> Self {
         Self {
             rpc_endpoint: "https://rpc.testnet.near.org".to_owned(),
-            max_retries: 4,
+            max_retries: 5,
         }
     }
 }

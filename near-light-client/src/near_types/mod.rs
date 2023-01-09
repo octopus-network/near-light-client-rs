@@ -1,3 +1,8 @@
+//! This module defines all necessary types for NEAR light client.
+//!
+//! Most of the codes in this module are ported from `nearcore` v1.30.0
+//! and are applied by necessary changes to remove std dependencies.
+
 pub mod hash;
 pub mod merkle;
 pub mod signature;

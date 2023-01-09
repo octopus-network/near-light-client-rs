@@ -26,7 +26,7 @@ pub struct LightClient {
 
 impl NearLightClient for LightClient {
     //
-    fn latest_head(&self) -> Option<LightClientBlockViewExt> {
+    fn get_latest_head(&self) -> Option<LightClientBlockViewExt> {
         if let Some(height) = self.latest_height() {
             self.get_head_at(height)
         } else {
@@ -64,7 +64,7 @@ impl NearLightClient for LightClient {
             .push_back(head.light_client_block_view.inner_lite.height);
     }
     //
-    fn epoch_block_producers(&self, epoch_id: &CryptoHash) -> Option<Vec<ValidatorStakeView>> {
+    fn get_epoch_block_producers(&self, epoch_id: &CryptoHash) -> Option<Vec<ValidatorStakeView>> {
         let mut bps: Option<Vec<ValidatorStakeView>> = None;
         let file_name = format!("{}/{}/{}", self.base_folder, BPS_DATA_SUB_FOLDER, epoch_id);
         if let Ok(bytes) = std::fs::read(file_name) {
@@ -117,6 +117,15 @@ impl LightClient {
             std::fs::remove_file(file_name)
                 .expect(format!("Failed to remove head data file for height {}.", height).as_str());
         }
+    }
+    ///
+    pub fn save_failed_head(&self, head: LightClientBlockViewExt) {
+        let file_name = format!(
+            "{}/failed_head/{}",
+            self.base_folder, head.light_client_block_view.inner_lite.height
+        );
+        std::fs::write(file_name, head.try_to_vec().unwrap())
+            .expect("Failed to save failed light client head to file.");
     }
 }
 

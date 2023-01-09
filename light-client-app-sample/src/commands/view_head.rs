@@ -1,6 +1,6 @@
 //! `start` subcommand - example of how to write a subcommand
 
-use crate::light_client::LightClient;
+use crate::light_client::{utils::print_light_client_block_view, LightClient};
 /// App-local prelude includes `app_reader()`/`app_writer()`/`app_config()`
 /// accessors along with logging macros. Customize as you see fit.
 use crate::prelude::*;
@@ -38,18 +38,9 @@ impl Runnable for ViewHeadCmd {
         };
         if let Some(head) = light_client.get_head_at(height) {
             if self.with_detail.map_or(false, |w| w) {
-                status_info!("Info", "Head data at height {}: {:?}", height, head);
+                status_info!("Info", "LightClientBlockViewExt: {:?}", head);
             } else {
-                status_info!(
-                    "Info",
-                    "Head data at height {}: {{ prev_block_hash: {}, height: {}, prev_state_root: {}, epoch_id: {}, next_epoch_id: {} }}",
-                    height,
-                    head.light_client_block_view.prev_block_hash,
-                    head.light_client_block_view.inner_lite.height,
-                    head.light_client_block_view.inner_lite.prev_state_root,
-                    head.light_client_block_view.inner_lite.epoch_id,
-                    head.light_client_block_view.inner_lite.next_epoch_id
-                );
+                print_light_client_block_view(&head.light_client_block_view);
             }
         } else {
             status_err!("Missing head data at height {}.", height);

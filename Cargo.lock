@@ -976,6 +976,8 @@ dependencies = [
  "anyhow",
  "base64 0.20.0",
  "borsh",
+ "bs58",
+ "chrono",
  "clap",
  "near-crypto",
  "near-jsonrpc-client",
