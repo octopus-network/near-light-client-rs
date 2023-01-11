@@ -6,10 +6,11 @@
 pub mod hash;
 pub mod merkle;
 pub mod signature;
+pub mod transaction;
 pub mod trie;
 
 use self::{
-    hash::CryptoHash,
+    hash::{combine_hash, sha256, CryptoHash},
     signature::{PublicKey, Signature},
 };
 use alloc::{string::String, vec::Vec};
@@ -24,6 +25,12 @@ pub type AccountId = String;
 pub type Balance = u128;
 pub type MerkleHash = CryptoHash;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlockId {
+    Height(BlockHeight),
+    Hash(CryptoHash),
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, BorshDeserialize, BorshSerialize)]
 pub struct BlockHeaderInnerLiteView {
     pub height: BlockHeight,
@@ -36,6 +43,31 @@ pub struct BlockHeaderInnerLiteView {
     pub timestamp_nanosec: u64,
     pub next_bp_hash: CryptoHash,
     pub block_merkle_root: CryptoHash,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, BorshDeserialize, BorshSerialize)]
+pub struct LightClientBlockLiteView {
+    pub inner_lite: BlockHeaderInnerLiteView,
+    pub inner_rest_hash: CryptoHash,
+    pub prev_block_hash: CryptoHash,
+}
+
+impl LightClientBlockLiteView {
+    //
+    pub fn current_block_hash(&self) -> CryptoHash {
+        combine_hash(
+            &combine_hash(
+                &CryptoHash(sha256(
+                    BlockHeaderInnerLite::from(self.inner_lite.clone())
+                        .try_to_vec()
+                        .unwrap()
+                        .as_ref(),
+                )),
+                &self.inner_rest_hash,
+            ),
+            &self.prev_block_hash,
+        )
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Eq, PartialEq)]
@@ -89,6 +121,39 @@ pub struct LightClientBlockView {
     pub inner_rest_hash: CryptoHash,
     pub next_bps: Option<Vec<ValidatorStakeView>>,
     pub approvals_after_next: Vec<Option<Signature>>,
+}
+
+impl LightClientBlockView {
+    //
+    pub fn current_block_hash(&self) -> CryptoHash {
+        combine_hash(
+            &combine_hash(
+                &CryptoHash(sha256(
+                    BlockHeaderInnerLite::from(self.inner_lite.clone())
+                        .try_to_vec()
+                        .unwrap()
+                        .as_ref(),
+                )),
+                &self.inner_rest_hash,
+            ),
+            &self.prev_block_hash,
+        )
+    }
+    //
+    pub fn next_block_hash(&self) -> CryptoHash {
+        combine_hash(&self.next_block_inner_hash, &self.current_block_hash())
+    }
+    //
+    pub fn approval_message(&self) -> Vec<u8> {
+        [
+            ApprovalInner::Endorsement(self.next_block_hash())
+                .try_to_vec()
+                .unwrap()
+                .as_ref(),
+            (self.inner_lite.height + 2).to_le_bytes().as_ref(),
+        ]
+        .concat()
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq)]

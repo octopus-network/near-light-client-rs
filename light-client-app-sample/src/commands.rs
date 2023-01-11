@@ -12,11 +12,13 @@
 
 mod start;
 mod validate_state;
+mod validate_tx;
 mod view_bps;
 mod view_head;
 
 use self::{
-    start::StartCmd, validate_state::ValidateStateCmd, view_bps::ViewBpsCmd, view_head::ViewHeadCmd,
+    start::StartCmd, validate_state::ValidateStateCmd, validate_tx::ValidateTxCmd,
+    view_bps::ViewBpsCmd, view_head::ViewHeadCmd,
 };
 use crate::config::LightClientAppSampleConfig;
 use abscissa_core::{config::Override, Command, Configurable, FrameworkError, Runnable};
@@ -37,6 +39,8 @@ pub enum LightClientAppSampleCmd {
     ViewBps(ViewBpsCmd),
     /// Validate state data corresponding to a storage key of a NEAR account.
     ValidateState(ValidateStateCmd),
+    /// Validate a certain transaction.
+    ValidateTx(ValidateTxCmd),
 }
 
 /// Entry point for the application. It needs to be a struct to allow using subcommands!

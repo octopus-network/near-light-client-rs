@@ -93,3 +93,27 @@ pub fn merklize<T: BorshSerialize>(arr: &[T]) -> (MerkleHash, Vec<MerklePath>) {
     }
     (hashes[0], paths)
 }
+
+/// Verify merkle path for given item and corresponding path.
+pub fn verify_path<T: BorshSerialize>(root: MerkleHash, path: &MerklePath, item: &T) -> bool {
+    verify_hash(root, path, CryptoHash::hash_borsh(&item))
+}
+
+pub fn verify_hash(root: MerkleHash, path: &MerklePath, item_hash: MerkleHash) -> bool {
+    compute_root_from_path(path, item_hash) == root
+}
+
+pub fn compute_root_from_path(path: &MerklePath, item_hash: MerkleHash) -> MerkleHash {
+    let mut res = item_hash;
+    for item in path {
+        match item.direction {
+            Direction::Left => {
+                res = combine_hash(&item.hash, &res);
+            }
+            Direction::Right => {
+                res = combine_hash(&res, &item.hash);
+            }
+        }
+    }
+    res
+}

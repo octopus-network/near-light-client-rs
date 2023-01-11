@@ -9,8 +9,9 @@ use crate::light_client::{near_rpc_client_wrapper::NearRpcClientWrapper, LightCl
 use crate::{info_with_time, prelude::*};
 use abscissa_core::{Command, Runnable};
 use near_light_client::near_types::trie::RawTrieNodeWithSize;
+use near_light_client::near_types::BlockId;
 use near_light_client::NearLightClient;
-use near_primitives::types::{AccountId, BlockId};
+use near_primitives::types::AccountId;
 
 /// `start` subcommand
 ///
@@ -52,7 +53,8 @@ async fn validate_storage_state(
     value: &String,
 ) {
     let light_client = LightClient::new(APP.config().state_data.data_folder.clone());
-    let head = light_client.get_head_at(block_height);
+    let block_id = BlockId::Height(block_height);
+    let head = light_client.get_head(&block_id);
     if head.is_none() {
         status_err!("Missing head data at height {}.", block_height);
         return;
@@ -63,7 +65,7 @@ async fn validate_storage_state(
         .view_state_with_proof(
             AccountId::try_from(near_account.clone()).unwrap(),
             Some(key_bytes.as_ref()),
-            Some(BlockId::Height(block_height - 1)),
+            Some(near_primitives::types::BlockId::Height(block_height - 1)),
         )
         .await
         .expect("Failed to view state of the given NEAR account.");
@@ -86,7 +88,7 @@ async fn validate_storage_state(
         .collect();
     info_with_time!("Proof data decoded: {:?}", nodes);
     match light_client.validate_contract_state(
-        block_height,
+        &block_id,
         near_account,
         key_bytes.as_ref(),
         value_bytes.as_ref(),

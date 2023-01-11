@@ -5,6 +5,7 @@ use crate::light_client::{utils::print_light_client_block_view, LightClient};
 /// accessors along with logging macros. Customize as you see fit.
 use crate::prelude::*;
 use abscissa_core::{Command, Runnable};
+use near_light_client::near_types::BlockId;
 use near_light_client::NearLightClient;
 
 /// `start` subcommand
@@ -36,7 +37,7 @@ impl Runnable for ViewHeadCmd {
                 None => panic!("No head data in client."),
             },
         };
-        if let Some(head) = light_client.get_head_at(height) {
+        if let Some(head) = light_client.get_head(&BlockId::Height(height)) {
             if self.with_detail.map_or(false, |w| w) {
                 status_info!("Info", "LightClientBlockViewExt: {:?}", head);
             } else {

@@ -3,4 +3,5 @@ rpc_endpoint = "https://rpc.testnet.near.org"
 
 [state_data]
 data_folder = "./tmp/chain_data/testnet"
-max_cached_heights = 600
+# to cache about 1 hours' data
+max_cached_heights = 3600

@@ -15,6 +15,10 @@ impl CryptoHash {
     pub const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
+    /// Calculates hash of given bytes.
+    pub fn hash_bytes(bytes: &[u8]) -> CryptoHash {
+        CryptoHash(sha2::Sha256::digest(bytes).into())
+    }
     /// Calculates hash of borsh-serialised representation of an object.
     ///
     /// Note that if you have a slice of objects to serialise, you might

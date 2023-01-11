@@ -6,40 +6,47 @@ use near_light_client::{
     near_types::{
         hash::CryptoHash,
         signature::{ED25519PublicKey, PublicKey, Signature},
-        BlockHeaderInnerLiteView, LightClientBlockView, ValidatorStakeView, ValidatorStakeViewV1,
+        BlockHeaderInnerLiteView, LightClientBlockLiteView, LightClientBlockView,
+        ValidatorStakeView, ValidatorStakeViewV1,
     },
     LightClientBlockViewExt,
 };
 use near_primitives::views::BlockView;
 
-/// Produce `LightClientBlockViewExt` by `LightClientBlockView` and `BlockView`.
+/// Produce `BlockHeaderInnerLiteView` by its NEAR version
+pub fn produce_block_header_inner_light_view(
+    view: &near_primitives::views::BlockHeaderInnerLiteView,
+) -> BlockHeaderInnerLiteView {
+    BlockHeaderInnerLiteView {
+        height: view.height,
+        epoch_id: CryptoHash(view.epoch_id.0),
+        next_epoch_id: CryptoHash(view.next_epoch_id.0),
+        prev_state_root: CryptoHash(view.prev_state_root.0),
+        outcome_root: CryptoHash(view.outcome_root.0),
+        timestamp: view.timestamp,
+        timestamp_nanosec: view.timestamp_nanosec,
+        next_bp_hash: CryptoHash(view.next_bp_hash.0),
+        block_merkle_root: CryptoHash(view.block_merkle_root.0),
+    }
+}
+
+/// Produce `LightClientBlockViewExt` by NEAR version of `LightClientBlockView` and `BlockView`.
 pub fn produce_light_client_block_view(
-    view_from_near: &near_primitives::views::LightClientBlockView,
+    view: &near_primitives::views::LightClientBlockView,
     block_view: &BlockView,
 ) -> LightClientBlockViewExt {
     assert!(
-        view_from_near.inner_lite.height == block_view.header.height,
+        view.inner_lite.height == block_view.header.height,
         "Not same height of light client block view and block view."
     );
     LightClientBlockViewExt {
         light_client_block_view: LightClientBlockView {
-            prev_block_hash: CryptoHash(view_from_near.prev_block_hash.0),
-            next_block_inner_hash: CryptoHash(view_from_near.next_block_inner_hash.0),
-            inner_lite: BlockHeaderInnerLiteView {
-                height: view_from_near.inner_lite.height,
-                epoch_id: CryptoHash(view_from_near.inner_lite.epoch_id.0),
-                next_epoch_id: CryptoHash(view_from_near.inner_lite.next_epoch_id.0),
-                prev_state_root: CryptoHash(view_from_near.inner_lite.prev_state_root.0),
-                outcome_root: CryptoHash(view_from_near.inner_lite.outcome_root.0),
-                timestamp: view_from_near.inner_lite.timestamp,
-                timestamp_nanosec: view_from_near.inner_lite.timestamp_nanosec,
-                next_bp_hash: CryptoHash(view_from_near.inner_lite.next_bp_hash.0),
-                block_merkle_root: CryptoHash(view_from_near.inner_lite.block_merkle_root.0),
-            },
-            inner_rest_hash: CryptoHash(view_from_near.inner_rest_hash.0),
+            prev_block_hash: CryptoHash(view.prev_block_hash.0),
+            next_block_inner_hash: CryptoHash(view.next_block_inner_hash.0),
+            inner_lite: produce_block_header_inner_light_view(&view.inner_lite),
+            inner_rest_hash: CryptoHash(view.inner_rest_hash.0),
             next_bps: Some(
-                view_from_near
-                    .next_bps
+                view.next_bps
                     .as_ref()
                     .unwrap()
                     .iter()
@@ -59,7 +66,7 @@ pub fn produce_light_client_block_view(
                     })
                     .collect(),
             ),
-            approvals_after_next: view_from_near
+            approvals_after_next: view
                 .approvals_after_next
                 .iter()
                 .map(|f| {
@@ -75,6 +82,17 @@ pub fn produce_light_client_block_view(
             .iter()
             .map(|header| CryptoHash(header.prev_state_root.0))
             .collect(),
+    }
+}
+
+/// Producer `LightClientBlockLiteView` by its NEAR version
+pub fn produce_light_client_block_lite_view(
+    view: &near_primitives::views::LightClientBlockLiteView,
+) -> LightClientBlockLiteView {
+    LightClientBlockLiteView {
+        inner_lite: produce_block_header_inner_light_view(&view.inner_lite),
+        inner_rest_hash: CryptoHash(view.inner_rest_hash.0),
+        prev_block_hash: CryptoHash(view.prev_block_hash.0),
     }
 }
 

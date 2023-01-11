@@ -4,11 +4,11 @@
 pub mod near_rpc_client_wrapper;
 pub mod utils;
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use near_light_client::{
-    near_types::{hash::CryptoHash, BlockHeight, ValidatorStakeView},
+    near_types::{hash::CryptoHash, BlockHeight, BlockId, ValidatorStakeView},
     LightClientBlockViewExt, NearLightClient,
 };
 
@@ -22,13 +22,14 @@ struct BlockProducers(Vec<ValidatorStakeView>);
 pub struct LightClient {
     base_folder: String,
     cached_heights: VecDeque<BlockHeight>,
+    block_hash_to_height: HashMap<CryptoHash, BlockHeight>,
 }
 
 impl NearLightClient for LightClient {
     //
     fn get_latest_head(&self) -> Option<LightClientBlockViewExt> {
         if let Some(height) = self.latest_height() {
-            self.get_head_at(height)
+            self.get_head(&BlockId::Height(height))
         } else {
             None
         }
@@ -77,7 +78,17 @@ impl NearLightClient for LightClient {
         bps
     }
     //
-    fn get_head_at(&self, height: BlockHeight) -> Option<LightClientBlockViewExt> {
+    fn get_head(&self, block_id: &BlockId) -> Option<LightClientBlockViewExt> {
+        let height = match block_id {
+            BlockId::Height(height) => *height,
+            BlockId::Hash(hash) => {
+                if let Some(height) = self.block_hash_to_height.get(hash) {
+                    *height
+                } else {
+                    return None;
+                }
+            }
+        };
         let mut head: Option<LightClientBlockViewExt> = None;
         let file_name = format!("{}/{}/{}", self.base_folder, HEAD_DATA_SUB_FOLDER, height);
         if let Ok(bytes) = std::fs::read(file_name) {
@@ -93,9 +104,11 @@ impl NearLightClient for LightClient {
 impl LightClient {
     /// Create light client from a trusted head
     pub fn new(base_folder: String) -> Self {
+        let (queue, map) = get_cached_heights(&base_folder);
         LightClient {
             base_folder: base_folder.clone(),
-            cached_heights: get_cached_heights(&base_folder),
+            cached_heights: queue,
+            block_hash_to_height: map,
         }
     }
     ///
@@ -130,9 +143,12 @@ impl LightClient {
 }
 
 //
-fn get_cached_heights(base_folder: &String) -> VecDeque<BlockHeight> {
+fn get_cached_heights(
+    base_folder: &String,
+) -> (VecDeque<BlockHeight>, HashMap<CryptoHash, BlockHeight>) {
     let head_data_path = format!("{}/{}", base_folder, HEAD_DATA_SUB_FOLDER);
     let mut heights = Vec::new();
+    let mut result_map = HashMap::new();
     for entry in std::fs::read_dir(head_data_path).expect("Failed to access head data folder.") {
         let dir_entry = entry.expect("Invalid file entry.");
         let path = dir_entry.path();
@@ -141,11 +157,16 @@ fn get_cached_heights(base_folder: &String) -> VecDeque<BlockHeight> {
                 let head = LightClientBlockViewExt::try_from_slice(&bytes)
                     .expect(format!("Invalid head data file {}.", path.display()).as_str());
                 heights.push(head.light_client_block_view.inner_lite.height);
+                let current_block_hash = head.light_client_block_view.current_block_hash();
+                result_map.insert(
+                    current_block_hash,
+                    head.light_client_block_view.inner_lite.height,
+                );
             }
         }
     }
     heights.sort();
     let mut result = VecDeque::new();
     heights.iter().for_each(|h| result.push_back(*h));
-    result
+    (result, result_map)
 }

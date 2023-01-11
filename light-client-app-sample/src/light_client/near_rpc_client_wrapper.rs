@@ -3,12 +3,13 @@
 
 use std::fmt::Debug;
 
+use near_jsonrpc_client::methods::light_client_proof::RpcLightClientExecutionProofResponse;
 use near_jsonrpc_client::methods::query::RpcQueryRequest;
 use near_jsonrpc_client::{methods, JsonRpcClient, MethodCallResult};
 use near_jsonrpc_primitives::types::query::QueryResponseKind;
 use near_primitives::hash::CryptoHash;
-use near_primitives::types::{AccountId, BlockId, Finality, StoreKey};
-use near_primitives::views::{BlockView, FinalExecutionOutcomeView, QueryRequest};
+use near_primitives::types::{AccountId, BlockId, Finality, StoreKey, TransactionOrReceiptId};
+use near_primitives::views::{BlockView, QueryRequest};
 use tokio_retry::strategy::{jitter, ExponentialBackoff, FixedInterval};
 use tokio_retry::Retry;
 
@@ -40,50 +41,6 @@ impl NearRpcClientWrapper {
             rpc_client,
             rpc_addr: rpc_addr.into(),
         }
-    }
-
-    pub(crate) async fn query_broadcast_tx(
-        &self,
-        method: &methods::broadcast_tx_commit::RpcBroadcastTxCommitRequest,
-    ) -> MethodCallResult<
-        FinalExecutionOutcomeView,
-        near_jsonrpc_primitives::types::transactions::RpcTransactionError,
-    > {
-        retry(|| async {
-            let result = self.rpc_client.call(method).await;
-            match &result {
-                Ok(response) => {
-                    // When user sets logging level to INFO we only print one-liners with submitted
-                    // actions and the resulting status. If the level is DEBUG or lower, we print
-                    // the entire request and response structures.
-                    if tracing::level_enabled!(tracing::Level::DEBUG) {
-                        tracing::debug!(
-                            target: "workspaces",
-                            "Calling RPC method {:?} succeeded with {:?}",
-                            method,
-                            response
-                        );
-                    } else {
-                        tracing::info!(
-                            target: "workspaces",
-                            "Submitting transaction with actions {:?} succeeded with status {:?}",
-                            method.signed_transaction.transaction.actions,
-                            response.status
-                        );
-                    }
-                }
-                Err(error) => {
-                    tracing::error!(
-                        target: "workspaces",
-                        "Calling RPC method {:?} resulted in error {:?}",
-                        method,
-                        error
-                    );
-                }
-            };
-            result
-        }, RetryStrategy::FixedInterval)
-        .await
     }
 
     pub(crate) async fn query<M>(&self, method: &M) -> MethodCallResult<M::Response, M::Error>
@@ -161,6 +118,28 @@ impl NearRpcClientWrapper {
                     QueryResponseKind::ViewState(state) => anyhow::Ok(state),
                     _ => anyhow::bail!(ERR_INVALID_VARIANT),
                 }
+            },
+            RetryStrategy::ExponentialBackoff,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_light_client_proof(
+        &self,
+        id: &TransactionOrReceiptId,
+        light_client_head: &CryptoHash,
+    ) -> anyhow::Result<RpcLightClientExecutionProofResponse> {
+        retry(
+            || async {
+                let query_resp = self
+                    .query(
+                        &methods::light_client_proof::RpcLightClientExecutionProofRequest {
+                            id: id.clone(),
+                            light_client_head: light_client_head.clone(),
+                        },
+                    )
+                    .await?;
+                anyhow::Ok(query_resp)
             },
             RetryStrategy::ExponentialBackoff,
         )

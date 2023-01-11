@@ -8,12 +8,12 @@ use alloc::vec::Vec;
 use borsh::{BorshDeserialize, BorshSerialize};
 use near_types::{
     get_raw_prefix_for_contract_data,
-    hash::{combine_hash, sha256, CryptoHash},
-    merkle::merklize,
+    hash::{sha256, CryptoHash},
+    merkle::{compute_root_from_path, merklize, MerklePath},
     signature::{PublicKey, Signature},
+    transaction::ExecutionOutcomeWithId,
     trie::{verify_state_proof, RawTrieNodeWithSize},
-    AccountId, ApprovalInner, BlockHeaderInnerLite, BlockHeight, LightClientBlockView,
-    ValidatorStakeView,
+    AccountId, BlockId, LightClientBlockLiteView, LightClientBlockView, ValidatorStakeView,
 };
 
 /// The head data struct of NEAR light client.
@@ -45,10 +45,10 @@ pub enum ClientStateVerificationError {
     InvalidPrevStateRootOfChunks,
 }
 
-/// Error type for function `validate_contract_state_proof`.
+/// Error type for function `validate_contract_state`.
 #[derive(Debug, Clone)]
 pub enum ContractStateValidationError {
-    MissingHeadInClient { height: u64 },
+    MissingHeadInClient { block_id: BlockId },
     InvalidRootHashOfProofData,
     InvalidLeafNodeHash { proof_index: u16 },
     InvalidLeafNodeKey { proof_index: u16 },
@@ -60,6 +60,14 @@ pub enum ContractStateValidationError {
     MissingBranchNodeValue { proof_index: u16 },
     MissingBranchNodeChildHash { proof_index: u16 },
     InvalidProofData,
+}
+
+/// Error type for function `validate_transaction`.
+#[derive(Debug, Clone)]
+pub enum TransactionValidationError {
+    MissingHeadInClient { block_id: BlockId },
+    InvalidOutcomeProof,
+    InvalidBlockProof,
 }
 
 /// This trait defines all necessary interfaces/functions for NEAR light client.
@@ -91,12 +99,13 @@ pub trait NearLightClient {
     /// (current epoch and the next) for the validation of new head can succeed.
     fn get_epoch_block_producers(&self, epoch_id: &CryptoHash) -> Option<Vec<ValidatorStakeView>>;
 
-    /// Returns the head at the given height.
+    /// Returns the head with the given `BlockId`.
     ///
-    /// As the validation of contract state proof needs the state root data at a certain height,
-    /// the light client implementation should cache a range of heights of heads for this
-    /// and provide a view function to return the cached heights for querying.
-    fn get_head_at(&self, height: BlockHeight) -> Option<LightClientBlockViewExt>;
+    /// As the validation of contract state proof or transaction/receipt proof needs
+    /// the state root data or outcome root data corresponding to a height or block hash,
+    /// the light client implementation should cache a numbers of heads for this
+    /// and provide a view function to return the cached block ids for querying.
+    fn get_head(&self, block_id: &BlockId) -> Option<LightClientBlockViewExt>;
 
     /// Validate the given head with `latest_head`.
     ///
@@ -112,8 +121,7 @@ pub trait NearLightClient {
             return Err(ClientStateVerificationError::UninitializedClient);
         }
         let latest_head = latest_head.unwrap();
-        let (_current_block_hash, _next_block_hash, approval_message) =
-            reconstruct_light_client_block_view_fields(&new_head.light_client_block_view);
+        let approval_message = new_head.light_client_block_view.approval_message();
 
         // Check the height of the block is higher than the height of the current head.
         if new_head.light_client_block_view.inner_lite.height
@@ -225,20 +233,19 @@ pub trait NearLightClient {
         Ok(())
     }
 
-    /// Validate the value of a certain storage key of an contract account at the given height
-    /// with proof data.
+    /// Validate the value of a certain storage key of an contract account
+    /// corresponding to a certain block id with proof data.
     ///
-    /// The `proofs` must be the proof data at `height - 1`, which can be queried by
-    /// NEAR rpc function `ViewState`.
+    /// The `proofs` must be the proof data at `height - 1`.
     fn validate_contract_state(
         &self,
-        height: BlockHeight,
+        block_id: &BlockId,
         contract_id: &AccountId,
         key_prefix: &[u8],
         value: &[u8],
         proofs: &Vec<Vec<u8>>,
     ) -> Result<(), ContractStateValidationError> {
-        if let Some(head) = self.get_head_at(height) {
+        if let Some(head) = self.get_head(block_id) {
             let root_hash = CryptoHash(sha256(proofs[0].as_ref()));
             if !head.prev_state_root_of_chunks.contains(&root_hash) {
                 return Err(ContractStateValidationError::InvalidRootHashOfProofData);
@@ -254,34 +261,44 @@ pub trait NearLightClient {
                 &root_hash,
             );
         } else {
-            return Err(ContractStateValidationError::MissingHeadInClient { height });
+            return Err(ContractStateValidationError::MissingHeadInClient {
+                block_id: block_id.clone(),
+            });
         }
     }
-}
 
-fn reconstruct_light_client_block_view_fields(
-    block_view: &LightClientBlockView,
-) -> (CryptoHash, CryptoHash, Vec<u8>) {
-    let current_block_hash = combine_hash(
-        &combine_hash(
-            &CryptoHash(sha256(
-                BlockHeaderInnerLite::from(block_view.inner_lite.clone())
-                    .try_to_vec()
-                    .unwrap()
-                    .as_ref(),
-            )),
-            &block_view.inner_rest_hash,
-        ),
-        &block_view.prev_block_hash,
-    );
-    let next_block_hash = combine_hash(&block_view.next_block_inner_hash, &current_block_hash);
-    let approval_message = [
-        ApprovalInner::Endorsement(next_block_hash.clone())
-            .try_to_vec()
-            .unwrap()
-            .as_ref(),
-        (block_view.inner_lite.height + 2).to_le_bytes().as_ref(),
-    ]
-    .concat();
-    (current_block_hash, next_block_hash, approval_message)
+    /// Validate the given transaction or receipt outcome with proof data.
+    fn validate_transaction_or_receipt(
+        &self,
+        head_hash: &CryptoHash,
+        outcome_with_id: &ExecutionOutcomeWithId,
+        outcome_proof: &MerklePath,
+        outcome_root_proof: &MerklePath,
+        block_lite_view: &LightClientBlockLiteView,
+        block_proof: &MerklePath,
+    ) -> Result<(), TransactionValidationError> {
+        let block_id = BlockId::Hash(*head_hash);
+        if let Some(head) = self.get_head(&block_id) {
+            let chunk_outcome_root = compute_root_from_path(
+                outcome_proof,
+                CryptoHash::hash_borsh(&outcome_with_id.to_hashes()),
+            );
+            let outcome_root = compute_root_from_path(
+                outcome_root_proof,
+                CryptoHash::hash_borsh(&chunk_outcome_root),
+            );
+            if outcome_root != block_lite_view.inner_lite.outcome_root {
+                return Err(TransactionValidationError::InvalidOutcomeProof);
+            }
+            let block_merkle_root =
+                compute_root_from_path(block_proof, block_lite_view.current_block_hash());
+            if block_merkle_root == head.light_client_block_view.inner_lite.block_merkle_root {
+                return Ok(());
+            } else {
+                return Err(TransactionValidationError::InvalidBlockProof);
+            }
+        } else {
+            return Err(TransactionValidationError::MissingHeadInClient { block_id });
+        }
+    }
 }
