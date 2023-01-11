@@ -1,4 +1,4 @@
-//! `start` subcommand - example of how to write a subcommand
+//! `view-bps` subcommand - to print the block producers data corresponding to a certain epoch.
 
 use crate::light_client::LightClient;
 /// App-local prelude includes `app_reader()`/`app_writer()`/`app_config()`
@@ -10,7 +10,7 @@ use near_light_client::near_types::hash::CryptoHash;
 use near_light_client::near_types::ValidatorStakeView;
 use near_light_client::NearLightClient;
 
-/// `start` subcommand
+/// `view-bps` subcommand
 ///
 /// The `Parser` proc macro generates an option parser based on the struct
 /// definition, and is defined in the `clap` crate. See their documentation

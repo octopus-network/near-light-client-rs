@@ -1,4 +1,4 @@
-//! `start` subcommand - example of how to write a subcommand
+//! `start` subcommand - start an instance of NEAR light client.
 
 use crate::config::LightClientAppSampleConfig;
 use crate::light_client::utils::produce_light_client_block_view;

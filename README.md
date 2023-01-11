@@ -8,5 +8,6 @@ The crate `light-client-app-sample` provides a basic implementation of a NEAR li
 
 * Sub-command `start` - to start a NEAR light client instance which will cache a certain range of heights of light client block headers and block producers of epochs in files.
 * Sub-command `validate-state` - to validate state data of a contract at a certain height.
+* Sub-command `validate-tx` - to validate a certain transaction at latest light client head.
 * Sub-command `view-bps` - to print the block producers data corresponding to a certain epoch.
 * Sub-command `view-head` - to print the head data at a certain height.

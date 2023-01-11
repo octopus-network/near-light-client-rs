@@ -39,7 +39,7 @@ pub enum LightClientAppSampleCmd {
     ViewBps(ViewBpsCmd),
     /// Validate state data corresponding to a storage key of a NEAR account.
     ValidateState(ValidateStateCmd),
-    /// Validate a certain transaction.
+    /// Validate a certain transaction with latest light client head.
     ValidateTx(ValidateTxCmd),
 }
 

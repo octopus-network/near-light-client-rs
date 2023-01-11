@@ -1,4 +1,4 @@
-//! `start` subcommand - example of how to write a subcommand
+//! `validate-state` subcommand - to validate state data of a contract at a certain height.
 
 use std::convert::TryFrom;
 use std::ops::Deref;
@@ -13,7 +13,7 @@ use near_light_client::near_types::BlockId;
 use near_light_client::NearLightClient;
 use near_primitives::types::AccountId;
 
-/// `start` subcommand
+/// `validate-state` subcommand
 ///
 /// The `Parser` proc macro generates an option parser based on the struct
 /// definition, and is defined in the `clap` crate. See their documentation

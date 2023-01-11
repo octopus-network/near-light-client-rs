@@ -1,4 +1,4 @@
-//! `start` subcommand - example of how to write a subcommand
+//! `validate-tx` subcommand - to validate a certain transaction at latest light client head.
 
 use std::convert::TryFrom;
 use std::str::FromStr;
@@ -17,7 +17,7 @@ use near_light_client::near_types::transaction::{
 };
 use near_light_client::NearLightClient;
 
-/// `start` subcommand
+/// `validate-tx` subcommand
 ///
 /// The `Parser` proc macro generates an option parser based on the struct
 /// definition, and is defined in the `clap` crate. See their documentation
@@ -28,7 +28,7 @@ use near_light_client::NearLightClient;
 pub struct ValidateTxCmd {
     /// base58 formatted transaction hash
     pub tx_hash: String,
-    /// Account id of sender
+    /// Account id of transaction sender
     pub sender_id: String,
 }
 
