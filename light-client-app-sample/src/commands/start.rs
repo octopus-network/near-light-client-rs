@@ -5,9 +5,10 @@ use crate::light_client::utils::produce_light_client_block_view;
 use crate::light_client::{near_rpc_client_wrapper::NearRpcClientWrapper, LightClient};
 /// App-local prelude includes `app_reader()`/`app_writer()`/`app_config()`
 /// accessors along with logging macros. Customize as you see fit.
-use crate::{info_with_time, prelude::*};
+use crate::prelude::*;
 use abscissa_core::{config, Command, FrameworkError, Runnable};
-use near_light_client::NearLightClient;
+use near_light_client::types::ConsensusState;
+use near_light_client::NearLightClientHost;
 use near_primitives::types::BlockId;
 use near_primitives::views::BlockView;
 
@@ -58,32 +59,48 @@ async fn start_light_client() {
             &Some(light_client_block_view.inner_lite.height),
         )
         .await;
-        let head = produce_light_client_block_view(&light_client_block_view, &block_view);
-        if light_client
-            .get_epoch_block_producers(&head.light_client_block_view.inner_lite.epoch_id)
-            .is_none()
+        let header = produce_light_client_block_view(&light_client_block_view, &block_view);
+        if let Some(latest_head) =
+            light_client.get_consensus_state(&light_client.latest_height().map_or(0, |h| h))
         {
-            info_with_time!(
-                "Update state at height: {}, epoch: {}",
-                head.light_client_block_view.inner_lite.height,
-                head.light_client_block_view.inner_lite.epoch_id
-            );
-            light_client.update_head(head);
-        } else {
-            info_with_time!(
-                "Validate and update state at height: {}, epoch: {}",
-                head.light_client_block_view.inner_lite.height,
-                head.light_client_block_view.inner_lite.epoch_id
-            );
-            if let Err(err) = light_client.validate_and_update_head(head.clone()) {
-                status_err!(
-                    "Failed to validate state at height {}: {:?}",
-                    head.light_client_block_view.inner_lite.height,
-                    err
+            if latest_head.current_bps.len() > 0 {
+                if let Err(err) = latest_head.verify_header(&header) {
+                    status_err!(
+                        "Failed to validate state at height {}: {:?}",
+                        header.light_client_block_view.inner_lite.height,
+                        err
+                    );
+                    light_client.save_failed_head(ConsensusState {
+                        current_bps: latest_head.current_bps,
+                        header,
+                    });
+                    break;
+                } else {
+                    light_client.set_consensus_state(
+                        &header.height(),
+                        ConsensusState {
+                            current_bps: latest_head.current_bps,
+                            header,
+                        },
+                    );
+                }
+            } else {
+                light_client.set_consensus_state(
+                    &header.height(),
+                    ConsensusState {
+                        current_bps: Vec::new(),
+                        header,
+                    },
                 );
-                light_client.save_failed_head(head);
-                break;
             }
+        } else {
+            light_client.set_consensus_state(
+                &header.height(),
+                ConsensusState {
+                    current_bps: Vec::new(),
+                    header,
+                },
+            );
         }
         //
         while light_client.cached_heights().len()

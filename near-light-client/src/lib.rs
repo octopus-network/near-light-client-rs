@@ -3,33 +3,23 @@
 extern crate alloc;
 
 pub mod near_types;
+pub mod types;
 
 use alloc::vec::Vec;
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
 use near_types::{
-    get_raw_prefix_for_contract_data,
     hash::{sha256, CryptoHash},
     merkle::{compute_root_from_path, merklize, MerklePath},
     signature::{PublicKey, Signature},
     transaction::ExecutionOutcomeWithId,
     trie::{verify_state_proof, RawTrieNodeWithSize},
-    AccountId, BlockId, LightClientBlockLiteView, LightClientBlockView, ValidatorStakeView,
+    LightClientBlockLiteView, ValidatorStakeView,
 };
-
-/// The head data struct of NEAR light client.
-///
-/// It's a wrapper of NEAR defined type `LightClientBlockView`,
-/// adding an array of `prev_state_root` of chunks at the same height.
-#[derive(Clone, Debug, BorshDeserialize, BorshSerialize)]
-pub struct LightClientBlockViewExt {
-    pub light_client_block_view: LightClientBlockView,
-    pub prev_state_root_of_chunks: Vec<CryptoHash>,
-}
+use types::{ClientIdentifier, ClientState, ConsensusState, Header, Height};
 
 /// Error type for function `validate_and_update_head`.
 #[derive(Debug, Clone)]
-pub enum ClientStateVerificationError {
-    UninitializedClient,
+pub enum HeaderVerificationError {
     InvalidBlockHeight,
     InvalidEpochId,
     MissingNextBlockProducersInHead,
@@ -47,8 +37,7 @@ pub enum ClientStateVerificationError {
 
 /// Error type for function `validate_contract_state`.
 #[derive(Debug, Clone)]
-pub enum ContractStateValidationError {
-    MissingHeadInClient { block_id: BlockId },
+pub enum StateProofVerificationError {
     InvalidRootHashOfProofData,
     InvalidLeafNodeHash { proof_index: u16 },
     InvalidLeafNodeKey { proof_index: u16 },
@@ -64,89 +53,89 @@ pub enum ContractStateValidationError {
 
 /// Error type for function `validate_transaction`.
 #[derive(Debug, Clone)]
-pub enum TransactionValidationError {
-    MissingHeadInClient { block_id: BlockId },
+pub enum TransactionVerificationError {
     InvalidOutcomeProof,
     InvalidBlockProof,
 }
 
-/// This trait defines all necessary interfaces/functions for NEAR light client.
-///
-/// It is used to decouple the persistence logic and validation logic of NEAR light client.
-pub trait NearLightClient {
-    /// Returns the latest light client head.
-    fn get_latest_head(&self) -> Option<LightClientBlockViewExt>;
+/// This trait defines interfaces related to persistence logic for NEAR light client.
+pub trait NearLightClientHost {
+    /// Returns the client state corresponding to the given identifier.
+    fn get_client_state(&self, identifier: &ClientIdentifier) -> Option<ClientState>;
 
-    /// Updates light client head.
-    ///
-    /// The implementation of this function should also
-    /// - cache the head within a certain range of heights. See function `get_head_at` too.
-    /// - store the block producers of next epoch in the head data.
-    ///   See function `epoch_block_producers` too.
-    ///
-    /// This function will be called in function `validate_and_update_head` automatically
-    /// if all checks are passed.
-    ///
-    /// As the function `validate_and_update_head` needs cached block producers of current epoch
-    /// and the next epoch, a new light client has to wait at most one epoch before function
-    /// `validate_and_update_head` can be called successfully. In this period, the client can
-    /// use this function to update head directly (with trusted head data).
-    fn update_head(&mut self, head: LightClientBlockViewExt);
+    /// Set the client state corresponding to the given identifier (to storage).
+    fn set_client_state(&self, identifier: &ClientIdentifier, client_state: ClientState);
 
-    /// Returns the block producers corresponding to the given `epoch_id`.
-    ///
-    /// The light client implementation should cache at least two epoch block producers
-    /// (current epoch and the next) for the validation of new head can succeed.
-    fn get_epoch_block_producers(&self, epoch_id: &CryptoHash) -> Option<Vec<ValidatorStakeView>>;
+    /// Returns the consensus state at the given `Height`.
+    fn get_consensus_state(&self, height: &Height) -> Option<ConsensusState>;
 
-    /// Returns the head with the given `BlockId`.
-    ///
-    /// As the validation of contract state proof or transaction/receipt proof needs
-    /// the state root data or outcome root data corresponding to a height or block hash,
-    /// the light client implementation should cache a numbers of heads for this
-    /// and provide a view function to return the cached block ids for querying.
-    fn get_head(&self, block_id: &BlockId) -> Option<LightClientBlockViewExt>;
+    /// Set the consensus state at the given `Height` (to storage).
+    fn set_consensus_state(&self, height: &Height, consensus_state: ConsensusState);
+}
 
-    /// Validate the given head with `latest_head`.
+impl Header {
     ///
-    /// Implemented based on the spec at `https://nomicon.io/ChainSpec/LightClient` basically. And
-    /// - Added checking of sigatures' count in `approvals_after_next` in head.
-    /// - Added checking of `prev_state_root` of chunks for contract state proof validation.
-    fn validate_and_update_head(
-        &mut self,
-        new_head: LightClientBlockViewExt,
-    ) -> Result<(), ClientStateVerificationError> {
-        let latest_head = self.get_latest_head();
-        if latest_head.is_none() {
-            return Err(ClientStateVerificationError::UninitializedClient);
+    pub fn height(&self) -> Height {
+        self.light_client_block_view.inner_lite.height
+    }
+}
+
+impl ConsensusState {
+    /// Returns the block producers corresponding to current epoch or the next.
+    pub fn get_block_producers_of(&self, epoch_id: &CryptoHash) -> Option<Vec<ValidatorStakeView>> {
+        if epoch_id.0.as_ref()
+            == self
+                .header
+                .light_client_block_view
+                .inner_lite
+                .epoch_id
+                .0
+                .as_ref()
+        {
+            return Some(self.current_bps.clone());
+        } else if epoch_id.0.as_ref()
+            == self
+                .header
+                .light_client_block_view
+                .inner_lite
+                .next_epoch_id
+                .0
+                .as_ref()
+        {
+            return self.header.light_client_block_view.next_bps.clone();
+        } else {
+            return None;
         }
-        let latest_head = latest_head.unwrap();
-        let approval_message = new_head.light_client_block_view.approval_message();
+    }
+
+    /// Verify header data with current consensus state.
+    pub fn verify_header(&self, header: &Header) -> Result<(), HeaderVerificationError> {
+        let approval_message = header.light_client_block_view.approval_message();
 
         // Check the height of the block is higher than the height of the current head.
-        if new_head.light_client_block_view.inner_lite.height
-            <= latest_head.light_client_block_view.inner_lite.height
+        if header.light_client_block_view.inner_lite.height
+            <= self.header.light_client_block_view.inner_lite.height
         {
-            return Err(ClientStateVerificationError::InvalidBlockHeight);
+            return Err(HeaderVerificationError::InvalidBlockHeight);
         }
 
         // Check the epoch of the block is equal to the epoch_id or next_epoch_id
         // known for the current head.
-        if new_head.light_client_block_view.inner_lite.epoch_id
-            != latest_head.light_client_block_view.inner_lite.epoch_id
-            && new_head.light_client_block_view.inner_lite.epoch_id
-                != latest_head.light_client_block_view.inner_lite.next_epoch_id
+        if header.light_client_block_view.inner_lite.epoch_id
+            != self.header.light_client_block_view.inner_lite.epoch_id
+            && header.light_client_block_view.inner_lite.epoch_id
+                != self.header.light_client_block_view.inner_lite.next_epoch_id
         {
-            return Err(ClientStateVerificationError::InvalidEpochId);
+            return Err(HeaderVerificationError::InvalidEpochId);
         }
 
         // If the epoch of the block is equal to the next_epoch_id of the head,
         // then next_bps is not None.
-        if new_head.light_client_block_view.inner_lite.epoch_id
-            == latest_head.light_client_block_view.inner_lite.next_epoch_id
-            && new_head.light_client_block_view.next_bps.is_none()
+        if header.light_client_block_view.inner_lite.epoch_id
+            == self.header.light_client_block_view.inner_lite.next_epoch_id
+            && header.light_client_block_view.next_bps.is_none()
         {
-            return Err(ClientStateVerificationError::MissingNextBlockProducersInHead);
+            return Err(HeaderVerificationError::MissingNextBlockProducersInHead);
         }
 
         // 1. The approvals_after_next contains valid signatures on approval_message
@@ -156,18 +145,15 @@ pub trait NearLightClient {
         let mut total_stake = 0;
         let mut approved_stake = 0;
 
-        let bps =
-            self.get_epoch_block_producers(&new_head.light_client_block_view.inner_lite.epoch_id);
+        let bps = self.get_block_producers_of(&header.light_client_block_view.inner_lite.epoch_id);
         if bps.is_none() {
-            return Err(
-                ClientStateVerificationError::MissingCachedEpochBlockProducers {
-                    epoch_id: new_head.light_client_block_view.inner_lite.epoch_id,
-                },
-            );
+            return Err(HeaderVerificationError::MissingCachedEpochBlockProducers {
+                epoch_id: header.light_client_block_view.inner_lite.epoch_id,
+            });
         }
 
         let epoch_block_producers = bps.unwrap();
-        for (maybe_signature, block_producer) in new_head
+        for (maybe_signature, block_producer) in header
             .light_client_block_view
             .approvals_after_next
             .iter()
@@ -189,7 +175,7 @@ pub trait NearLightClient {
                 .unwrap()
                 .verify(&approval_message, &validator_public_key)
             {
-                return Err(ClientStateVerificationError::InvalidValidatorSignature {
+                return Err(HeaderVerificationError::InvalidValidatorSignature {
                     signature: maybe_signature.clone().unwrap(),
                     pubkey: validator_public_key,
                 });
@@ -198,13 +184,13 @@ pub trait NearLightClient {
 
         let threshold = total_stake * 2 / 3;
         if approved_stake <= threshold {
-            return Err(ClientStateVerificationError::BlockIsNotFinal);
+            return Err(HeaderVerificationError::BlockIsNotFinal);
         }
 
         // If next_bps is not none, sha256(borsh(next_bps)) corresponds to
         // the next_bp_hash in inner_lite.
-        if new_head.light_client_block_view.next_bps.is_some() {
-            let block_view_next_bps_serialized = new_head
+        if header.light_client_block_view.next_bps.is_some() {
+            let block_view_next_bps_serialized = header
                 .light_client_block_view
                 .next_bps
                 .as_deref()
@@ -212,93 +198,89 @@ pub trait NearLightClient {
                 .try_to_vec()
                 .unwrap();
             if sha256(&block_view_next_bps_serialized).as_slice()
-                != new_head
+                != header
                     .light_client_block_view
                     .inner_lite
                     .next_bp_hash
                     .as_ref()
             {
-                return Err(ClientStateVerificationError::InvalidNextBlockProducersHash);
+                return Err(HeaderVerificationError::InvalidNextBlockProducersHash);
             }
         }
 
         // Check the `prev_state_root` is the merkle root of `prev_state_root_of_chunks`.
-        if new_head.light_client_block_view.inner_lite.prev_state_root
-            != merklize(&new_head.prev_state_root_of_chunks).0
+        if header.light_client_block_view.inner_lite.prev_state_root
+            != merklize(&header.prev_state_root_of_chunks).0
         {
-            return Err(ClientStateVerificationError::InvalidPrevStateRootOfChunks);
+            return Err(HeaderVerificationError::InvalidPrevStateRootOfChunks);
         }
 
-        self.update_head(new_head);
         Ok(())
     }
 
-    /// Validate the value of a certain storage key of an contract account
-    /// corresponding to a certain block id with proof data.
+    /// Verify the value of a certain storage key with proof data.
     ///
     /// The `proofs` must be the proof data at `height - 1`.
-    fn validate_contract_state(
+    pub fn verify_membership(
         &self,
-        block_id: &BlockId,
-        contract_id: &AccountId,
-        key_prefix: &[u8],
+        key: &[u8],
         value: &[u8],
         proofs: &Vec<Vec<u8>>,
-    ) -> Result<(), ContractStateValidationError> {
-        if let Some(head) = self.get_head(block_id) {
-            let root_hash = CryptoHash(sha256(proofs[0].as_ref()));
-            if !head.prev_state_root_of_chunks.contains(&root_hash) {
-                return Err(ContractStateValidationError::InvalidRootHashOfProofData);
-            }
-            let nodes: Vec<RawTrieNodeWithSize> = proofs
-                .iter()
-                .map(|bytes| RawTrieNodeWithSize::decode(bytes).unwrap())
-                .collect();
-            return verify_state_proof(
-                &get_raw_prefix_for_contract_data(contract_id, key_prefix),
-                &nodes,
-                value,
-                &root_hash,
-            );
-        } else {
-            return Err(ContractStateValidationError::MissingHeadInClient {
-                block_id: block_id.clone(),
-            });
+    ) -> Result<(), StateProofVerificationError> {
+        let root_hash = CryptoHash(sha256(proofs[0].as_ref()));
+        if !self.header.prev_state_root_of_chunks.contains(&root_hash) {
+            return Err(StateProofVerificationError::InvalidRootHashOfProofData);
         }
+        let nodes: Vec<RawTrieNodeWithSize> = proofs
+            .iter()
+            .map(|bytes| RawTrieNodeWithSize::decode(bytes).unwrap())
+            .collect();
+        return verify_state_proof(&key, &nodes, value, &root_hash);
     }
 
-    /// Validate the given transaction or receipt outcome with proof data.
-    fn validate_transaction_or_receipt(
+    /// Verify that there is NO value on the path with proof data.
+    ///
+    /// The `proofs` must be the proof data at `height - 1`.
+    pub fn verify_non_membership(
         &self,
-        head_hash: &CryptoHash,
+        key: &[u8],
+        proofs: &Vec<Vec<u8>>,
+    ) -> Result<(), StateProofVerificationError> {
+        todo!()
+    }
+
+    /// Verify the given transaction or receipt outcome with proof data.
+    pub fn verify_transaction_or_receipt(
+        &self,
         outcome_with_id: &ExecutionOutcomeWithId,
         outcome_proof: &MerklePath,
         outcome_root_proof: &MerklePath,
         block_lite_view: &LightClientBlockLiteView,
         block_proof: &MerklePath,
-    ) -> Result<(), TransactionValidationError> {
-        let block_id = BlockId::Hash(*head_hash);
-        if let Some(head) = self.get_head(&block_id) {
-            let chunk_outcome_root = compute_root_from_path(
-                outcome_proof,
-                CryptoHash::hash_borsh(&outcome_with_id.to_hashes()),
-            );
-            let outcome_root = compute_root_from_path(
-                outcome_root_proof,
-                CryptoHash::hash_borsh(&chunk_outcome_root),
-            );
-            if outcome_root != block_lite_view.inner_lite.outcome_root {
-                return Err(TransactionValidationError::InvalidOutcomeProof);
-            }
-            let block_merkle_root =
-                compute_root_from_path(block_proof, block_lite_view.current_block_hash());
-            if block_merkle_root == head.light_client_block_view.inner_lite.block_merkle_root {
-                return Ok(());
-            } else {
-                return Err(TransactionValidationError::InvalidBlockProof);
-            }
+    ) -> Result<(), TransactionVerificationError> {
+        let chunk_outcome_root = compute_root_from_path(
+            outcome_proof,
+            CryptoHash::hash_borsh(&outcome_with_id.to_hashes()),
+        );
+        let outcome_root = compute_root_from_path(
+            outcome_root_proof,
+            CryptoHash::hash_borsh(&chunk_outcome_root),
+        );
+        if outcome_root != block_lite_view.inner_lite.outcome_root {
+            return Err(TransactionVerificationError::InvalidOutcomeProof);
+        }
+        let block_merkle_root =
+            compute_root_from_path(block_proof, block_lite_view.current_block_hash());
+        if block_merkle_root
+            == self
+                .header
+                .light_client_block_view
+                .inner_lite
+                .block_merkle_root
+        {
+            return Ok(());
         } else {
-            return Err(TransactionValidationError::MissingHeadInClient { block_id });
+            return Err(TransactionVerificationError::InvalidBlockProof);
         }
     }
 }

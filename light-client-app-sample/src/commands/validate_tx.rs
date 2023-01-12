@@ -15,7 +15,7 @@ use near_light_client::near_types::merkle::MerklePathItem;
 use near_light_client::near_types::transaction::{
     ExecutionOutcome, ExecutionOutcomeWithId, ExecutionStatus,
 };
-use near_light_client::NearLightClient;
+use near_light_client::NearLightClientHost;
 
 /// `validate-tx` subcommand
 ///
@@ -46,9 +46,14 @@ async fn validate_transaction(tx_hash: &String, sender_id: &String) {
         CryptoHash::try_from(bs58::decode(tx_hash.clone()).into_vec().unwrap().as_ref()).unwrap();
     let sender_id = near_primitives::account::id::AccountId::from_str(sender_id.as_str()).unwrap();
     let rpc_client = NearRpcClientWrapper::new(APP.config().near_rpc.rpc_endpoint.as_str());
-    let head_hash = light_client
-        .get_latest_head()
-        .unwrap()
+    let head = light_client.get_consensus_state(&light_client.latest_height().map_or(0, |h| h));
+    if head.is_none() {
+        status_err!("Uninitialized NEAR light client.");
+        return;
+    }
+    let head_state = head.unwrap();
+    let head_hash = head_state
+        .header
         .light_client_block_view
         .current_block_hash();
     let result = rpc_client
@@ -64,8 +69,7 @@ async fn validate_transaction(tx_hash: &String, sender_id: &String) {
     info_with_time!("Header of block proof: {:?}", result.block_header_lite);
     info_with_time!("Block proof length: {}", result.block_proof.len());
     info_with_time!("Block proof data: {:?}", result.block_proof);
-    match light_client.validate_transaction_or_receipt(
-        &head_hash,
+    match head_state.verify_transaction_or_receipt(
         &ExecutionOutcomeWithId {
             id: transaction_hash,
             outcome: ExecutionOutcome {

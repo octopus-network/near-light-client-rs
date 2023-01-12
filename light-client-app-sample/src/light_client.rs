@@ -8,12 +8,12 @@ use std::collections::{HashMap, VecDeque};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use near_light_client::{
-    near_types::{hash::CryptoHash, BlockHeight, BlockId, ValidatorStakeView},
-    LightClientBlockViewExt, NearLightClient,
+    near_types::{hash::CryptoHash, BlockHeight, ValidatorStakeView},
+    types::{ClientIdentifier, ClientState, ConsensusState, Height},
+    NearLightClientHost,
 };
 
 const HEAD_DATA_SUB_FOLDER: &str = "head";
-const BPS_DATA_SUB_FOLDER: &str = "bps";
 
 #[derive(BorshDeserialize, BorshSerialize)]
 struct BlockProducers(Vec<ValidatorStakeView>);
@@ -22,93 +22,42 @@ struct BlockProducers(Vec<ValidatorStakeView>);
 pub struct LightClient {
     base_folder: String,
     cached_heights: VecDeque<BlockHeight>,
-    block_hash_to_height: HashMap<CryptoHash, BlockHeight>,
 }
 
-impl NearLightClient for LightClient {
-    //
-    fn get_latest_head(&self) -> Option<LightClientBlockViewExt> {
-        if let Some(height) = self.latest_height() {
-            self.get_head(&BlockId::Height(height))
-        } else {
-            None
-        }
+impl NearLightClientHost for LightClient {
+    fn get_client_state(&self, identifier: &ClientIdentifier) -> Option<ClientState> {
+        todo!()
     }
-    //
-    fn update_head(&mut self, head: LightClientBlockViewExt) {
-        if let Some(latest_height) = self.cached_heights.back() {
-            assert!(
-                head.light_client_block_view.inner_lite.height > *latest_height,
-                "Head data is too old."
-            );
-        }
-        //
-        if let Some(next_bps) = head.light_client_block_view.next_bps.clone() {
-            let file_name = format!(
-                "{}/{}/{}",
-                self.base_folder,
-                BPS_DATA_SUB_FOLDER,
-                head.light_client_block_view.inner_lite.next_epoch_id
-            );
-            std::fs::write(file_name, BlockProducers(next_bps).try_to_vec().unwrap())
-                .expect("Failed to save light client state to file.");
-        }
-        //
-        let file_name = format!(
-            "{}/{}/{}",
-            self.base_folder, HEAD_DATA_SUB_FOLDER, head.light_client_block_view.inner_lite.height
-        );
-        std::fs::write(file_name, head.try_to_vec().unwrap())
-            .expect("Failed to save light client state to file.");
-        //
-        self.cached_heights
-            .push_back(head.light_client_block_view.inner_lite.height);
+
+    fn set_client_state(&self, identifier: &ClientIdentifier, client_state: ClientState) {
+        todo!()
     }
-    //
-    fn get_epoch_block_producers(&self, epoch_id: &CryptoHash) -> Option<Vec<ValidatorStakeView>> {
-        let mut bps: Option<Vec<ValidatorStakeView>> = None;
-        let file_name = format!("{}/{}/{}", self.base_folder, BPS_DATA_SUB_FOLDER, epoch_id);
-        if let Ok(bytes) = std::fs::read(file_name) {
-            bps = Some(
-                BlockProducers::try_from_slice(&bytes)
-                    .expect(format!("Invalid bps data for epoch id {}.", epoch_id).as_str())
-                    .0,
-            );
-        }
-        bps
-    }
-    //
-    fn get_head(&self, block_id: &BlockId) -> Option<LightClientBlockViewExt> {
-        let height = match block_id {
-            BlockId::Height(height) => *height,
-            BlockId::Hash(hash) => {
-                if let Some(height) = self.block_hash_to_height.get(hash) {
-                    *height
-                } else {
-                    return None;
-                }
-            }
-        };
-        let mut head: Option<LightClientBlockViewExt> = None;
+
+    fn get_consensus_state(&self, height: &Height) -> Option<ConsensusState> {
         let file_name = format!("{}/{}/{}", self.base_folder, HEAD_DATA_SUB_FOLDER, height);
         if let Ok(bytes) = std::fs::read(file_name) {
-            head = Some(
-                LightClientBlockViewExt::try_from_slice(&bytes)
+            return Some(
+                ConsensusState::try_from_slice(&bytes)
                     .expect(format!("Invalid head data file for height {}.", height).as_str()),
             );
         }
-        head
+        None
+    }
+
+    fn set_consensus_state(&self, height: &Height, consensus_state: ConsensusState) {
+        let file_name = format!("{}/{}/{}", self.base_folder, HEAD_DATA_SUB_FOLDER, height);
+        std::fs::write(file_name, consensus_state.try_to_vec().unwrap())
+            .expect("Failed to save light client state to file.");
     }
 }
 
 impl LightClient {
     /// Create light client from a trusted head
     pub fn new(base_folder: String) -> Self {
-        let (queue, map) = get_cached_heights(&base_folder);
+        let (queue, _map) = get_cached_heights(&base_folder);
         LightClient {
             base_folder: base_folder.clone(),
             cached_heights: queue,
-            block_hash_to_height: map,
         }
     }
     ///
@@ -132,10 +81,10 @@ impl LightClient {
         }
     }
     ///
-    pub fn save_failed_head(&self, head: LightClientBlockViewExt) {
+    pub fn save_failed_head(&self, head: ConsensusState) {
         let file_name = format!(
             "{}/failed_head/{}",
-            self.base_folder, head.light_client_block_view.inner_lite.height
+            self.base_folder, head.header.light_client_block_view.inner_lite.height
         );
         std::fs::write(file_name, head.try_to_vec().unwrap())
             .expect("Failed to save failed light client head to file.");
@@ -154,13 +103,13 @@ fn get_cached_heights(
         let path = dir_entry.path();
         if path.is_file() {
             if let Ok(bytes) = std::fs::read(path.as_os_str()) {
-                let head = LightClientBlockViewExt::try_from_slice(&bytes)
+                let head = ConsensusState::try_from_slice(&bytes)
                     .expect(format!("Invalid head data file {}.", path.display()).as_str());
-                heights.push(head.light_client_block_view.inner_lite.height);
-                let current_block_hash = head.light_client_block_view.current_block_hash();
+                heights.push(head.header.light_client_block_view.inner_lite.height);
+                let current_block_hash = head.header.light_client_block_view.current_block_hash();
                 result_map.insert(
                     current_block_hash,
-                    head.light_client_block_view.inner_lite.height,
+                    head.header.light_client_block_view.inner_lite.height,
                 );
             }
         }

@@ -8,9 +8,9 @@ use crate::light_client::{near_rpc_client_wrapper::NearRpcClientWrapper, LightCl
 /// accessors along with logging macros. Customize as you see fit.
 use crate::{info_with_time, prelude::*};
 use abscissa_core::{Command, Runnable};
+use near_light_client::near_types::get_raw_prefix_for_contract_data;
 use near_light_client::near_types::trie::RawTrieNodeWithSize;
-use near_light_client::near_types::BlockId;
-use near_light_client::NearLightClient;
+use near_light_client::NearLightClientHost;
 use near_primitives::types::AccountId;
 
 /// `validate-state` subcommand
@@ -53,12 +53,12 @@ async fn validate_storage_state(
     value: &String,
 ) {
     let light_client = LightClient::new(APP.config().state_data.data_folder.clone());
-    let block_id = BlockId::Height(block_height);
-    let head = light_client.get_head(&block_id);
+    let head = light_client.get_consensus_state(&block_height);
     if head.is_none() {
         status_err!("Missing head data at height {}.", block_height);
         return;
     }
+    let head_state = head.unwrap();
     let rpc_client = NearRpcClientWrapper::new(APP.config().near_rpc.rpc_endpoint.as_str());
     let key_bytes = base64::decode(storage_key).unwrap();
     let result = rpc_client
@@ -87,10 +87,8 @@ async fn validate_storage_state(
         .map(|bytes| RawTrieNodeWithSize::decode(bytes).unwrap())
         .collect();
     info_with_time!("Proof data decoded: {:?}", nodes);
-    match light_client.validate_contract_state(
-        &block_id,
-        near_account,
-        key_bytes.as_ref(),
+    match head_state.verify_membership(
+        &get_raw_prefix_for_contract_data(&near_account, key_bytes.as_ref()),
         value_bytes.as_ref(),
         &proofs,
     ) {

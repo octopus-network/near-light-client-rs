@@ -2,7 +2,7 @@ pub mod nibble_slice;
 
 use self::nibble_slice::NibbleSlice;
 use super::{hash::sha256, CryptoHash};
-use crate::ContractStateValidationError;
+use crate::StateProofVerificationError;
 use alloc::vec::Vec;
 use borsh::maybestd::{
     io::{Cursor, Error, ErrorKind, Read},
@@ -157,7 +157,7 @@ pub fn verify_state_proof(
     nodes: &Vec<RawTrieNodeWithSize>,
     value: &[u8],
     state_root: &CryptoHash,
-) -> Result<(), ContractStateValidationError> {
+) -> Result<(), StateProofVerificationError> {
     let mut v = Vec::new();
     let mut hash_node = |node: &RawTrieNodeWithSize| {
         v.clear();
@@ -177,14 +177,14 @@ pub fn verify_state_proof(
             } => {
                 hash = hash_node(&node);
                 if hash != expected_hash {
-                    return Err(ContractStateValidationError::InvalidLeafNodeHash {
+                    return Err(StateProofVerificationError::InvalidLeafNodeHash {
                         proof_index: node_index,
                     });
                 }
 
                 let nib = &NibbleSlice::from_encoded(&node_key).0;
                 if &key != nib {
-                    return Err(ContractStateValidationError::InvalidLeafNodeKey {
+                    return Err(StateProofVerificationError::InvalidLeafNodeKey {
                         proof_index: node_index,
                     });
                 }
@@ -192,7 +192,7 @@ pub fn verify_state_proof(
                 match CryptoHash(sha256(value)) == *value_hash {
                     true => return Ok(()),
                     false => {
-                        return Err(ContractStateValidationError::InvalidLeafNodeValueHash {
+                        return Err(StateProofVerificationError::InvalidLeafNodeValueHash {
                             proof_index: node_index,
                         })
                     }
@@ -204,7 +204,7 @@ pub fn verify_state_proof(
             } => {
                 hash = hash_node(&node);
                 if hash != expected_hash {
-                    return Err(ContractStateValidationError::InvalidExtensionNodeHash {
+                    return Err(StateProofVerificationError::InvalidExtensionNodeHash {
                         proof_index: node_index,
                     });
                 }
@@ -212,7 +212,7 @@ pub fn verify_state_proof(
 
                 let nib = NibbleSlice::from_encoded(&node_key).0;
                 if !key.starts_with(&nib) {
-                    return Err(ContractStateValidationError::InvalidExtensionNodeKey {
+                    return Err(StateProofVerificationError::InvalidExtensionNodeKey {
                         proof_index: node_index,
                     });
                 }
@@ -224,7 +224,7 @@ pub fn verify_state_proof(
             } => {
                 hash = hash_node(&node);
                 if hash != expected_hash {
-                    return Err(ContractStateValidationError::InvalidBranchNodeHash {
+                    return Err(StateProofVerificationError::InvalidBranchNodeHash {
                         proof_index: node_index,
                     });
                 }
@@ -235,13 +235,11 @@ pub fn verify_state_proof(
                     return match maybe_value_hash {
                         Some(value_hash) => match expected_value_hash == value_hash {
                             true => Ok(()),
-                            false => {
-                                Err(ContractStateValidationError::InvalidBranchNodeValueHash {
-                                    proof_index: node_index,
-                                })
-                            }
+                            false => Err(StateProofVerificationError::InvalidBranchNodeValueHash {
+                                proof_index: node_index,
+                            }),
                         },
-                        None => Err(ContractStateValidationError::MissingBranchNodeValue {
+                        None => Err(StateProofVerificationError::MissingBranchNodeValue {
                             proof_index: node_index,
                         }),
                     };
@@ -253,7 +251,7 @@ pub fn verify_state_proof(
                         expected_hash = *child_hash;
                     }
                     None => {
-                        return Err(ContractStateValidationError::MissingBranchNodeChildHash {
+                        return Err(StateProofVerificationError::MissingBranchNodeChildHash {
                             proof_index: node_index,
                         })
                     }
@@ -264,6 +262,6 @@ pub fn verify_state_proof(
     }
     match hash == expected_hash {
         true => Ok(()),
-        false => Err(ContractStateValidationError::InvalidProofData),
+        false => Err(StateProofVerificationError::InvalidProofData),
     }
 }

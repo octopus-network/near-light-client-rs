@@ -9,7 +9,7 @@ use near_light_client::{
         BlockHeaderInnerLiteView, LightClientBlockLiteView, LightClientBlockView,
         ValidatorStakeView, ValidatorStakeViewV1,
     },
-    LightClientBlockViewExt,
+    types::Header,
 };
 use near_primitives::views::BlockView;
 
@@ -30,16 +30,16 @@ pub fn produce_block_header_inner_light_view(
     }
 }
 
-/// Produce `LightClientBlockViewExt` by NEAR version of `LightClientBlockView` and `BlockView`.
+/// Produce `Header` by NEAR version of `LightClientBlockView` and `BlockView`.
 pub fn produce_light_client_block_view(
     view: &near_primitives::views::LightClientBlockView,
     block_view: &BlockView,
-) -> LightClientBlockViewExt {
+) -> Header {
     assert!(
         view.inner_lite.height == block_view.header.height,
         "Not same height of light client block view and block view."
     );
-    LightClientBlockViewExt {
+    Header {
         light_client_block_view: LightClientBlockView {
             prev_block_hash: CryptoHash(view.prev_block_hash.0),
             next_block_inner_hash: CryptoHash(view.next_block_inner_hash.0),
