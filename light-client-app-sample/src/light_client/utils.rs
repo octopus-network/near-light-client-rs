@@ -9,7 +9,7 @@ use near_light_client::{
         BlockHeaderInnerLiteView, LightClientBlockLiteView, LightClientBlockView,
         ValidatorStakeView, ValidatorStakeViewV1,
     },
-    types::Header,
+    types::{ConsensusState, Header},
 };
 use near_primitives::views::BlockView;
 
@@ -97,17 +97,18 @@ pub fn produce_light_client_block_lite_view(
 }
 
 /// Print general info of `LightClientBlockView` with macro `status_info`.
-pub fn print_light_client_block_view(view: &LightClientBlockView) {
+pub fn print_light_client_consensus_state(view: &ConsensusState) {
     status_info!(
         "Info",
-        "LightClientBlockView: {{ prev_block_hash: {}, height: {}, prev_state_root: {}, epoch_id: {}, next_epoch_id: {}, signature_count: {}, next_bps_count: {} }}",
-        view.prev_block_hash,
-        view.inner_lite.height,
-        view.inner_lite.prev_state_root,
-        view.inner_lite.epoch_id,
-        view.inner_lite.next_epoch_id,
-        view.approvals_after_next.len(),
-        view.next_bps.as_ref().map_or(0, |bps| bps.len()),
+        "ConsensusState: {{ prev_block_hash: {}, height: {}, prev_state_root: {}, epoch_id: {}, next_epoch_id: {}, signature_count: {}, current_bps_count: {}, next_bps_count: {} }}",
+        view.header.light_client_block_view.prev_block_hash,
+        view.header.height(),
+        view.header.light_client_block_view.inner_lite.prev_state_root,
+        view.header.epoch_id(),
+        view.header.next_epoch_id(),
+        view.header.light_client_block_view.approvals_after_next.len(),
+        view.current_bps.as_ref().map_or(0, |bps| bps.len()),
+        view.header.light_client_block_view.next_bps.as_ref().map_or(0, |bps| bps.len()),
     );
 }
 

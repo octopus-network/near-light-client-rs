@@ -9,8 +9,8 @@ use std::collections::{HashMap, VecDeque};
 use borsh::{BorshDeserialize, BorshSerialize};
 use near_light_client::{
     near_types::{hash::CryptoHash, BlockHeight, ValidatorStakeView},
-    types::{ClientIdentifier, ClientState, ConsensusState, Height},
-    NearLightClientHost,
+    types::{ConsensusState, Height},
+    BasicNearLightClient,
 };
 
 const HEAD_DATA_SUB_FOLDER: &str = "head";
@@ -24,13 +24,9 @@ pub struct LightClient {
     cached_heights: VecDeque<BlockHeight>,
 }
 
-impl NearLightClientHost for LightClient {
-    fn get_client_state(&self, identifier: &ClientIdentifier) -> Option<ClientState> {
-        todo!()
-    }
-
-    fn set_client_state(&self, identifier: &ClientIdentifier, client_state: ClientState) {
-        todo!()
+impl BasicNearLightClient for LightClient {
+    fn latest_height(&self) -> Height {
+        self.cached_heights.back().map_or(0, |h| *h)
     }
 
     fn get_consensus_state(&self, height: &Height) -> Option<ConsensusState> {
@@ -42,12 +38,6 @@ impl NearLightClientHost for LightClient {
             );
         }
         None
-    }
-
-    fn set_consensus_state(&self, height: &Height, consensus_state: ConsensusState) {
-        let file_name = format!("{}/{}/{}", self.base_folder, HEAD_DATA_SUB_FOLDER, height);
-        std::fs::write(file_name, consensus_state.try_to_vec().unwrap())
-            .expect("Failed to save light client state to file.");
     }
 }
 
@@ -61,16 +51,18 @@ impl LightClient {
         }
     }
     ///
-    pub fn latest_height(&self) -> Option<u64> {
-        self.cached_heights.back().map(|h| *h)
-    }
-    ///
     pub fn oldest_height(&self) -> Option<u64> {
         self.cached_heights.front().map(|h| *h)
     }
     ///
     pub fn cached_heights(&self) -> Vec<u64> {
         self.cached_heights.iter().map(|h| *h).collect()
+    }
+    ///
+    pub fn set_consensus_state(&mut self, height: &Height, consensus_state: ConsensusState) {
+        let file_name = format!("{}/{}/{}", self.base_folder, HEAD_DATA_SUB_FOLDER, height);
+        std::fs::write(file_name, consensus_state.try_to_vec().unwrap())
+            .expect("Failed to save light client state to file.");
     }
     ///
     pub fn remove_oldest_head(&mut self) {

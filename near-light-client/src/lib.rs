@@ -15,9 +15,9 @@ use near_types::{
     trie::{verify_state_proof, RawTrieNodeWithSize},
     LightClientBlockLiteView, ValidatorStakeView,
 };
-use types::{ClientIdentifier, ClientState, ConsensusState, Header, Height};
+use types::{ConsensusState, Header, Height};
 
-/// Error type for function `validate_and_update_head`.
+/// Error type for header verification.
 #[derive(Debug, Clone)]
 pub enum HeaderVerificationError {
     InvalidBlockHeight,
@@ -35,7 +35,7 @@ pub enum HeaderVerificationError {
     InvalidPrevStateRootOfChunks,
 }
 
-/// Error type for function `validate_contract_state`.
+/// Error type for state proof verification.
 #[derive(Debug, Clone)]
 pub enum StateProofVerificationError {
     InvalidRootHashOfProofData,
@@ -51,88 +51,47 @@ pub enum StateProofVerificationError {
     InvalidProofData,
 }
 
-/// Error type for function `validate_transaction`.
+/// Error type for transaction verification.
 #[derive(Debug, Clone)]
 pub enum TransactionVerificationError {
     InvalidOutcomeProof,
     InvalidBlockProof,
 }
 
-/// This trait defines interfaces related to persistence logic for NEAR light client.
-pub trait NearLightClientHost {
-    /// Returns the client state corresponding to the given identifier.
-    fn get_client_state(&self, identifier: &ClientIdentifier) -> Option<ClientState>;
-
-    /// Set the client state corresponding to the given identifier (to storage).
-    fn set_client_state(&self, identifier: &ClientIdentifier, client_state: ClientState);
+/// This trait is a minimal interface for NEAR light client,
+/// providing a few functions for header verification.
+pub trait BasicNearLightClient {
+    /// Returns the latest height of the client.
+    fn latest_height(&self) -> Height;
 
     /// Returns the consensus state at the given `Height`.
     fn get_consensus_state(&self, height: &Height) -> Option<ConsensusState>;
 
-    /// Set the consensus state at the given `Height` (to storage).
-    fn set_consensus_state(&self, height: &Height, consensus_state: ConsensusState);
-}
+    /// Verify header data with the consensus state of latest height.
+    fn verify_header(&self, header: &Header) -> Result<(), HeaderVerificationError> {
+        let latest_consensus_state = self
+            .get_consensus_state(&self.latest_height())
+            .expect("Should not fail if the light client is initialized properly.");
+        let latest_header = &latest_consensus_state.header;
 
-impl Header {
-    ///
-    pub fn height(&self) -> Height {
-        self.light_client_block_view.inner_lite.height
-    }
-}
-
-impl ConsensusState {
-    /// Returns the block producers corresponding to current epoch or the next.
-    pub fn get_block_producers_of(&self, epoch_id: &CryptoHash) -> Option<Vec<ValidatorStakeView>> {
-        if epoch_id.0.as_ref()
-            == self
-                .header
-                .light_client_block_view
-                .inner_lite
-                .epoch_id
-                .0
-                .as_ref()
-        {
-            return Some(self.current_bps.clone());
-        } else if epoch_id.0.as_ref()
-            == self
-                .header
-                .light_client_block_view
-                .inner_lite
-                .next_epoch_id
-                .0
-                .as_ref()
-        {
-            return self.header.light_client_block_view.next_bps.clone();
-        } else {
-            return None;
-        }
-    }
-
-    /// Verify header data with current consensus state.
-    pub fn verify_header(&self, header: &Header) -> Result<(), HeaderVerificationError> {
         let approval_message = header.light_client_block_view.approval_message();
 
         // Check the height of the block is higher than the height of the current head.
-        if header.light_client_block_view.inner_lite.height
-            <= self.header.light_client_block_view.inner_lite.height
-        {
+        if header.height() <= latest_header.height() {
             return Err(HeaderVerificationError::InvalidBlockHeight);
         }
 
         // Check the epoch of the block is equal to the epoch_id or next_epoch_id
         // known for the current head.
-        if header.light_client_block_view.inner_lite.epoch_id
-            != self.header.light_client_block_view.inner_lite.epoch_id
-            && header.light_client_block_view.inner_lite.epoch_id
-                != self.header.light_client_block_view.inner_lite.next_epoch_id
+        if header.epoch_id() != latest_header.epoch_id()
+            && header.epoch_id() != latest_header.next_epoch_id()
         {
             return Err(HeaderVerificationError::InvalidEpochId);
         }
 
         // If the epoch of the block is equal to the next_epoch_id of the head,
         // then next_bps is not None.
-        if header.light_client_block_view.inner_lite.epoch_id
-            == self.header.light_client_block_view.inner_lite.next_epoch_id
+        if header.epoch_id() == latest_header.next_epoch_id()
             && header.light_client_block_view.next_bps.is_none()
         {
             return Err(HeaderVerificationError::MissingNextBlockProducersInHead);
@@ -145,10 +104,10 @@ impl ConsensusState {
         let mut total_stake = 0;
         let mut approved_stake = 0;
 
-        let bps = self.get_block_producers_of(&header.light_client_block_view.inner_lite.epoch_id);
+        let bps = latest_consensus_state.get_block_producers_of(&header.epoch_id());
         if bps.is_none() {
             return Err(HeaderVerificationError::MissingCachedEpochBlockProducers {
-                epoch_id: header.light_client_block_view.inner_lite.epoch_id,
+                epoch_id: header.epoch_id(),
             });
         }
 
@@ -182,8 +141,7 @@ impl ConsensusState {
             }
         }
 
-        let threshold = total_stake * 2 / 3;
-        if approved_stake <= threshold {
+        if approved_stake * 3 <= total_stake * 2 {
             return Err(HeaderVerificationError::BlockIsNotFinal);
         }
 
@@ -216,6 +174,34 @@ impl ConsensusState {
         }
 
         Ok(())
+    }
+}
+
+impl Header {
+    ///
+    pub fn height(&self) -> Height {
+        self.light_client_block_view.inner_lite.height
+    }
+    ///
+    pub fn epoch_id(&self) -> CryptoHash {
+        self.light_client_block_view.inner_lite.epoch_id
+    }
+    ///
+    pub fn next_epoch_id(&self) -> CryptoHash {
+        self.light_client_block_view.inner_lite.next_epoch_id
+    }
+}
+
+impl ConsensusState {
+    /// Returns the block producers corresponding to current epoch or the next.
+    pub fn get_block_producers_of(&self, epoch_id: &CryptoHash) -> Option<Vec<ValidatorStakeView>> {
+        if *epoch_id == self.header.epoch_id() {
+            return self.current_bps.clone();
+        } else if *epoch_id == self.header.next_epoch_id() {
+            return self.header.light_client_block_view.next_bps.clone();
+        } else {
+            return None;
+        }
     }
 
     /// Verify the value of a certain storage key with proof data.

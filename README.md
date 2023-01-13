@@ -4,9 +4,7 @@ A light client implementation of NEAR protocol, written in Rust language.
 
 ## Crate `near-light-client`
 
-This crate defines all necessary interfaces/functions for NEAR light client and provides default implementation of light client block header verification, on-chain state verification and transaction/receipt verification. It is implemented as `no-std` and tried to keep minimal dependencies. It doesn't include any persistence logic too. This crate can be used in other Rust based applications which need NEAR light client implementation, like `Substrate`.
-
-The interfaces/functions in this crate are designed based on the [IBC specification](https://github.com/cosmos/ibc) (ics-012-near-client), making it easier to be integrated into the implementation of IBC/TAO as a client component.
+This crate defines a minimal interface for NEAR light client and provides default implementation of light client header verification, on-chain state verification and transaction/receipt verification. It is implemented as `no-std` and tried to keep minimal dependencies. It doesn't include any persistence logic too. This crate can be used in other Rust based applications which need basic NEAR light client implementation, like `Substrate` or IBC implementations.
 
 ## Crate `light-client-app-sample`
 

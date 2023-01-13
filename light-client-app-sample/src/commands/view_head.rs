@@ -1,11 +1,11 @@
 //! `view-head` subcommand - to print the head data at a certain height.
 
-use crate::light_client::{utils::print_light_client_block_view, LightClient};
+use crate::light_client::{utils::print_light_client_consensus_state, LightClient};
 /// App-local prelude includes `app_reader()`/`app_writer()`/`app_config()`
 /// accessors along with logging macros. Customize as you see fit.
 use crate::prelude::*;
 use abscissa_core::{Command, Runnable};
-use near_light_client::NearLightClientHost;
+use near_light_client::BasicNearLightClient;
 
 /// `view-head` subcommand
 ///
@@ -27,20 +27,17 @@ impl Runnable for ViewHeadCmd {
         status_info!(
             "Info",
             "Latest height of light client: {}",
-            light_client.latest_height().unwrap_or(0)
+            light_client.latest_height()
         );
         let height = match self.height {
             Some(height) => height,
-            None => match light_client.latest_height() {
-                Some(height) => height,
-                None => panic!("No head data in client."),
-            },
+            None => light_client.latest_height(),
         };
         if let Some(head) = light_client.get_consensus_state(&height) {
             if self.with_detail.map_or(false, |w| w) {
                 status_info!("Info", "Head data at height {}: {:?}", height, head);
             } else {
-                print_light_client_block_view(&head.header.light_client_block_view);
+                print_light_client_consensus_state(&head);
             }
         } else {
             status_err!("Missing head data at height {}.", height);

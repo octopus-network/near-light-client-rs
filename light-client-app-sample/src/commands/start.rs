@@ -8,7 +8,7 @@ use crate::light_client::{near_rpc_client_wrapper::NearRpcClientWrapper, LightCl
 use crate::prelude::*;
 use abscissa_core::{config, Command, FrameworkError, Runnable};
 use near_light_client::types::ConsensusState;
-use near_light_client::NearLightClientHost;
+use near_light_client::BasicNearLightClient;
 use near_primitives::types::BlockId;
 use near_primitives::views::BlockView;
 
@@ -48,7 +48,7 @@ async fn start_light_client() {
     //
     // Keep updating state and save state to file
     //
-    let mut block_view = get_block(&rpc_client, &light_client.latest_height()).await;
+    let mut block_view = get_block(&rpc_client, &Some(light_client.latest_height())).await;
     loop {
         let light_client_block_view = rpc_client
             .get_next_light_client_block(&block_view.header.hash)
@@ -60,18 +60,17 @@ async fn start_light_client() {
         )
         .await;
         let header = produce_light_client_block_view(&light_client_block_view, &block_view);
-        if let Some(latest_head) =
-            light_client.get_consensus_state(&light_client.latest_height().map_or(0, |h| h))
-        {
-            if latest_head.current_bps.len() > 0 {
-                if let Err(err) = latest_head.verify_header(&header) {
+        if let Some(latest_head) = light_client.get_consensus_state(&light_client.latest_height()) {
+            let current_bps = latest_head.get_block_producers_of(&header.epoch_id());
+            if current_bps.is_some() {
+                if let Err(err) = light_client.verify_header(&header) {
                     status_err!(
                         "Failed to validate state at height {}: {:?}",
-                        header.light_client_block_view.inner_lite.height,
+                        header.height(),
                         err
                     );
                     light_client.save_failed_head(ConsensusState {
-                        current_bps: latest_head.current_bps,
+                        current_bps,
                         header,
                     });
                     break;
@@ -79,7 +78,7 @@ async fn start_light_client() {
                     light_client.set_consensus_state(
                         &header.height(),
                         ConsensusState {
-                            current_bps: latest_head.current_bps,
+                            current_bps,
                             header,
                         },
                     );
@@ -88,7 +87,7 @@ async fn start_light_client() {
                 light_client.set_consensus_state(
                     &header.height(),
                     ConsensusState {
-                        current_bps: Vec::new(),
+                        current_bps: None,
                         header,
                     },
                 );
@@ -97,7 +96,7 @@ async fn start_light_client() {
             light_client.set_consensus_state(
                 &header.height(),
                 ConsensusState {
-                    current_bps: Vec::new(),
+                    current_bps: None,
                     header,
                 },
             );

@@ -10,7 +10,7 @@ use crate::{info_with_time, prelude::*};
 use abscissa_core::{Command, Runnable};
 use near_light_client::near_types::get_raw_prefix_for_contract_data;
 use near_light_client::near_types::trie::RawTrieNodeWithSize;
-use near_light_client::NearLightClientHost;
+use near_light_client::BasicNearLightClient;
 use near_primitives::types::AccountId;
 
 /// `validate-state` subcommand
@@ -22,12 +22,12 @@ use near_primitives::types::AccountId;
 /// <https://docs.rs/clap/>
 #[derive(clap::Parser, Command, Debug)]
 pub struct ValidateStateCmd {
-    pub block_height: u64,
     pub near_account: String,
     /// base64 formatted storage key
     pub storage_key: String,
     /// base64 formatted value
     pub value: String,
+    pub block_height: Option<u64>,
 }
 
 impl Runnable for ValidateStateCmd {
@@ -36,7 +36,7 @@ impl Runnable for ValidateStateCmd {
         abscissa_tokio::run(
             &APP,
             validate_storage_state(
-                self.block_height,
+                &self.block_height,
                 &self.near_account,
                 &self.storage_key,
                 &self.value,
@@ -47,15 +47,19 @@ impl Runnable for ValidateStateCmd {
 }
 
 async fn validate_storage_state(
-    block_height: u64,
+    block_height: &Option<u64>,
     near_account: &String,
     storage_key: &String,
     value: &String,
 ) {
     let light_client = LightClient::new(APP.config().state_data.data_folder.clone());
-    let head = light_client.get_consensus_state(&block_height);
+    let height = match block_height {
+        Some(height) => *height,
+        None => light_client.latest_height(),
+    };
+    let head = light_client.get_consensus_state(&height);
     if head.is_none() {
-        status_err!("Missing head data at height {}.", block_height);
+        status_err!("Missing head data at height {}.", height);
         return;
     }
     let head_state = head.unwrap();
@@ -65,7 +69,7 @@ async fn validate_storage_state(
         .view_state_with_proof(
             AccountId::try_from(near_account.clone()).unwrap(),
             Some(key_bytes.as_ref()),
-            Some(near_primitives::types::BlockId::Height(block_height - 1)),
+            Some(near_primitives::types::BlockId::Height(height - 1)),
         )
         .await
         .expect("Failed to view state of the given NEAR account.");

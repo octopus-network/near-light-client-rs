@@ -15,7 +15,7 @@ use near_light_client::near_types::merkle::MerklePathItem;
 use near_light_client::near_types::transaction::{
     ExecutionOutcome, ExecutionOutcomeWithId, ExecutionStatus,
 };
-use near_light_client::NearLightClientHost;
+use near_light_client::BasicNearLightClient;
 
 /// `validate-tx` subcommand
 ///
@@ -46,7 +46,7 @@ async fn validate_transaction(tx_hash: &String, sender_id: &String) {
         CryptoHash::try_from(bs58::decode(tx_hash.clone()).into_vec().unwrap().as_ref()).unwrap();
     let sender_id = near_primitives::account::id::AccountId::from_str(sender_id.as_str()).unwrap();
     let rpc_client = NearRpcClientWrapper::new(APP.config().near_rpc.rpc_endpoint.as_str());
-    let head = light_client.get_consensus_state(&light_client.latest_height().map_or(0, |h| h));
+    let head = light_client.get_consensus_state(&light_client.latest_height());
     if head.is_none() {
         status_err!("Uninitialized NEAR light client.");
         return;
