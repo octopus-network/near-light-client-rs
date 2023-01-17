@@ -164,7 +164,6 @@ pub fn verify_state_proof(
         node.encode_into(&mut v);
         CryptoHash(sha256(&v))
     };
-    let mut hash = CryptoHash::new();
     let mut key = NibbleSlice::new(key);
     let mut expected_hash = state_root.clone();
     let mut node_index: u16 = 0;
@@ -175,8 +174,7 @@ pub fn verify_state_proof(
                 node: RawTrieNode::Leaf(node_key, _, value_hash),
                 ..
             } => {
-                hash = hash_node(&node);
-                if hash != expected_hash {
+                if hash_node(&node) != expected_hash {
                     return Err(StateProofVerificationError::InvalidLeafNodeHash {
                         proof_index: node_index,
                     });
@@ -202,8 +200,7 @@ pub fn verify_state_proof(
                 node: RawTrieNode::Extension(node_key, child_hash),
                 ..
             } => {
-                hash = hash_node(&node);
-                if hash != expected_hash {
+                if hash_node(&node) != expected_hash {
                     return Err(StateProofVerificationError::InvalidExtensionNodeHash {
                         proof_index: node_index,
                     });
@@ -222,8 +219,7 @@ pub fn verify_state_proof(
                 node: RawTrieNode::Branch(children, node_value),
                 ..
             } => {
-                hash = hash_node(&node);
-                if hash != expected_hash {
+                if hash_node(&node) != expected_hash {
                     return Err(StateProofVerificationError::InvalidBranchNodeHash {
                         proof_index: node_index,
                     });
@@ -260,8 +256,5 @@ pub fn verify_state_proof(
         }
         node_index += 1;
     }
-    match hash == expected_hash {
-        true => Ok(()),
-        false => Err(StateProofVerificationError::InvalidProofData),
-    }
+    Err(StateProofVerificationError::InvalidProofDataLength)
 }

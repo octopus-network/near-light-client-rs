@@ -5,9 +5,8 @@ use crate::light_client::utils::produce_light_client_block_view;
 use crate::light_client::{near_rpc_client_wrapper::NearRpcClientWrapper, LightClient};
 /// App-local prelude includes `app_reader()`/`app_writer()`/`app_config()`
 /// accessors along with logging macros. Customize as you see fit.
-use crate::prelude::*;
+use crate::{info_with_time, prelude::*};
 use abscissa_core::{config, Command, FrameworkError, Runnable};
-use near_light_client::types::ConsensusState;
 use near_light_client::BasicNearLightClient;
 use near_primitives::types::BlockId;
 use near_primitives::views::BlockView;
@@ -48,8 +47,13 @@ async fn start_light_client() {
     //
     // Keep updating state and save state to file
     //
-    let mut block_view = get_block(&rpc_client, &Some(light_client.latest_height())).await;
-    loop {
+    let latest_height = match light_client.latest_height() {
+        0 => None,
+        height => Some(height),
+    };
+    let mut block_view = get_block(&rpc_client, &latest_height).await;
+    let mut should_break = false;
+    while !should_break {
         let light_client_block_view = rpc_client
             .get_next_light_client_block(&block_view.header.hash)
             .await
@@ -60,47 +64,29 @@ async fn start_light_client() {
         )
         .await;
         let header = produce_light_client_block_view(&light_client_block_view, &block_view);
-        if let Some(latest_head) = light_client.get_consensus_state(&light_client.latest_height()) {
-            let current_bps = latest_head.get_block_producers_of(&header.epoch_id());
-            if current_bps.is_some() {
-                if let Err(err) = light_client.verify_header(&header) {
-                    status_err!(
-                        "Failed to validate state at height {}: {:?}",
-                        header.height(),
-                        err
-                    );
-                    light_client.save_failed_head(ConsensusState {
-                        current_bps,
-                        header,
-                    });
-                    break;
-                } else {
-                    light_client.set_consensus_state(
-                        &header.height(),
-                        ConsensusState {
-                            current_bps,
-                            header,
-                        },
-                    );
-                }
+        let current_cs = light_client.get_consensus_state(&light_client.latest_height());
+        let current_bps = match current_cs {
+            Some(cs) => cs.get_block_producers_of(&header.epoch_id()),
+            None => None,
+        };
+        if current_bps.is_some() {
+            if let Err(err) = light_client.verify_header(&header) {
+                status_err!(
+                    "Failed to verify header at height {}: {:?}",
+                    header.height(),
+                    err
+                );
+                should_break = true;
             } else {
-                light_client.set_consensus_state(
-                    &header.height(),
-                    ConsensusState {
-                        current_bps: None,
-                        header,
-                    },
+                info_with_time!(
+                    "Successfully verified header at height {}.",
+                    header.height()
                 );
             }
         } else {
-            light_client.set_consensus_state(
-                &header.height(),
-                ConsensusState {
-                    current_bps: None,
-                    header,
-                },
-            );
+            info_with_time!("Skip verifying header at height {}.", header.height());
         }
+        light_client.update_state(header);
         //
         while light_client.cached_heights().len()
             > APP.config().state_data.max_cached_heights as usize

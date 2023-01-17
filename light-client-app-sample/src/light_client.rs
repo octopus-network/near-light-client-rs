@@ -9,7 +9,7 @@ use std::collections::{HashMap, VecDeque};
 use borsh::{BorshDeserialize, BorshSerialize};
 use near_light_client::{
     near_types::{hash::CryptoHash, BlockHeight, ValidatorStakeView},
-    types::{ConsensusState, Height},
+    types::{ConsensusState, Header, Height},
     BasicNearLightClient,
 };
 
@@ -80,6 +80,23 @@ impl LightClient {
         );
         std::fs::write(file_name, head.try_to_vec().unwrap())
             .expect("Failed to save failed light client head to file.");
+    }
+    ///
+    pub fn update_state(&mut self, header: Header) {
+        let current_bps = match self.get_consensus_state(&self.latest_height()) {
+            Some(cs) => cs.get_block_producers_of(&header.epoch_id()),
+            None => None,
+        };
+        if self.latest_height() < header.height() {
+            self.cached_heights.push_back(header.height());
+        }
+        self.set_consensus_state(
+            &header.height(),
+            ConsensusState {
+                current_bps,
+                header,
+            },
+        );
     }
 }
 

@@ -38,7 +38,9 @@ pub enum HeaderVerificationError {
 /// Error type for state proof verification.
 #[derive(Debug, Clone)]
 pub enum StateProofVerificationError {
+    MissingProofData,
     InvalidRootHashOfProofData,
+    InvalidProofData { proof_index: u16 },
     InvalidLeafNodeHash { proof_index: u16 },
     InvalidLeafNodeKey { proof_index: u16 },
     InvalidLeafNodeValueHash { proof_index: u16 },
@@ -48,7 +50,7 @@ pub enum StateProofVerificationError {
     InvalidBranchNodeValueHash { proof_index: u16 },
     MissingBranchNodeValue { proof_index: u16 },
     MissingBranchNodeChildHash { proof_index: u16 },
-    InvalidProofData,
+    InvalidProofDataLength,
 }
 
 /// Error type for transaction verification.
@@ -111,7 +113,7 @@ pub trait BasicNearLightClient {
             });
         }
 
-        let epoch_block_producers = bps.unwrap();
+        let epoch_block_producers = bps.expect("Should not fail based on previous checking.");
         for (maybe_signature, block_producer) in header
             .light_client_block_view
             .approvals_after_next
@@ -131,11 +133,13 @@ pub trait BasicNearLightClient {
             let validator_public_key = bp_stake_view.public_key.clone();
             if !maybe_signature
                 .as_ref()
-                .unwrap()
+                .expect("Should not fail based on previous checking.")
                 .verify(&approval_message, &validator_public_key)
             {
                 return Err(HeaderVerificationError::InvalidValidatorSignature {
-                    signature: maybe_signature.clone().unwrap(),
+                    signature: maybe_signature
+                        .clone()
+                        .expect("Should not fail based on previous checking."),
                     pubkey: validator_public_key,
                 });
             }
@@ -152,9 +156,9 @@ pub trait BasicNearLightClient {
                 .light_client_block_view
                 .next_bps
                 .as_deref()
-                .unwrap()
+                .expect("Should not fail based on previous checking.")
                 .try_to_vec()
-                .unwrap();
+                .expect("Should not fail based on borsh serialization.");
             if sha256(&block_view_next_bps_serialized).as_slice()
                 != header
                     .light_client_block_view
@@ -213,26 +217,24 @@ impl ConsensusState {
         value: &[u8],
         proofs: &Vec<Vec<u8>>,
     ) -> Result<(), StateProofVerificationError> {
+        if proofs.len() == 0 {
+            return Err(StateProofVerificationError::MissingProofData);
+        }
         let root_hash = CryptoHash(sha256(proofs[0].as_ref()));
         if !self.header.prev_state_root_of_chunks.contains(&root_hash) {
             return Err(StateProofVerificationError::InvalidRootHashOfProofData);
         }
-        let nodes: Vec<RawTrieNodeWithSize> = proofs
-            .iter()
-            .map(|bytes| RawTrieNodeWithSize::decode(bytes).unwrap())
-            .collect();
+        let mut nodes: Vec<RawTrieNodeWithSize> = Vec::new();
+        let mut proof_index: u16 = 0;
+        for proof in proofs {
+            if let Ok(node) = RawTrieNodeWithSize::decode(proof) {
+                nodes.push(node);
+            } else {
+                return Err(StateProofVerificationError::InvalidProofData { proof_index });
+            }
+            proof_index += 1;
+        }
         return verify_state_proof(&key, &nodes, value, &root_hash);
-    }
-
-    /// Verify that there is NO value on the path with proof data.
-    ///
-    /// The `proofs` must be the proof data at `height - 1`.
-    pub fn verify_non_membership(
-        &self,
-        key: &[u8],
-        proofs: &Vec<Vec<u8>>,
-    ) -> Result<(), StateProofVerificationError> {
-        todo!()
     }
 
     /// Verify the given transaction or receipt outcome with proof data.

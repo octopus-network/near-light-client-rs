@@ -16,8 +16,8 @@ use near_light_client::BasicNearLightClient;
 /// <https://docs.rs/clap/>
 #[derive(clap::Parser, Command, Debug)]
 pub struct ViewHeadCmd {
-    pub height: Option<u64>,
     pub with_detail: Option<bool>,
+    pub height: Option<u64>,
 }
 
 impl Runnable for ViewHeadCmd {
