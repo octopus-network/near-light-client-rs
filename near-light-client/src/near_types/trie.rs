@@ -258,3 +258,85 @@ pub fn verify_state_proof(
     }
     Err(StateProofVerificationError::InvalidProofDataLength)
 }
+
+pub fn verify_not_in_state(
+    key: &[u8],
+    nodes: &Vec<RawTrieNodeWithSize>,
+    state_root: &CryptoHash,
+) -> Result<bool, StateProofVerificationError> {
+    let mut v = Vec::new();
+    let mut hash_node = |node: &RawTrieNodeWithSize| {
+        v.clear();
+        node.encode_into(&mut v);
+        CryptoHash(sha256(&v))
+    };
+    let mut key = NibbleSlice::new(key);
+    let mut expected_hash = state_root.clone();
+    let mut node_index: u16 = 0;
+
+    for node in nodes.iter() {
+        match node {
+            RawTrieNodeWithSize {
+                node: RawTrieNode::Leaf(node_key, _, _),
+                ..
+            } => {
+                if hash_node(&node) != expected_hash {
+                    return Err(StateProofVerificationError::InvalidLeafNodeHash {
+                        proof_index: node_index,
+                    });
+                }
+
+                let nib = &NibbleSlice::from_encoded(&node_key).0;
+                if &key != nib {
+                    return Ok(true);
+                }
+
+                return Ok(false);
+            }
+            RawTrieNodeWithSize {
+                node: RawTrieNode::Extension(node_key, child_hash),
+                ..
+            } => {
+                if hash_node(&node) != expected_hash {
+                    return Err(StateProofVerificationError::InvalidExtensionNodeHash {
+                        proof_index: node_index,
+                    });
+                }
+                expected_hash = *child_hash;
+
+                let nib = NibbleSlice::from_encoded(&node_key).0;
+                if !key.starts_with(&nib) {
+                    return Ok(true);
+                }
+                key = key.mid(nib.len());
+            }
+            RawTrieNodeWithSize {
+                node: RawTrieNode::Branch(children, node_value),
+                ..
+            } => {
+                if hash_node(&node) != expected_hash {
+                    return Err(StateProofVerificationError::InvalidBranchNodeHash {
+                        proof_index: node_index,
+                    });
+                }
+
+                if key.is_empty() {
+                    return Ok(node_value.is_none());
+                }
+
+                let index = key.at(0);
+                match &children[index as usize] {
+                    Some(child_hash) => {
+                        key = key.mid(1);
+                        expected_hash = *child_hash;
+                    }
+                    None => {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+        node_index += 1;
+    }
+    Err(StateProofVerificationError::InvalidProofDataLength)
+}

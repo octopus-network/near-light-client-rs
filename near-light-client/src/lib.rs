@@ -12,8 +12,8 @@ use near_types::{
     merkle::{compute_root_from_path, merklize, MerklePath},
     signature::{PublicKey, Signature},
     transaction::ExecutionOutcomeWithId,
-    trie::{verify_state_proof, RawTrieNodeWithSize},
-    LightClientBlockLiteView, ValidatorStakeView,
+    trie::{verify_not_in_state, verify_state_proof, RawTrieNodeWithSize},
+    LightClientBlockLite, ValidatorStakeView,
 };
 use types::{ConsensusState, Header, Height};
 
@@ -76,7 +76,7 @@ pub trait BasicNearLightClient {
             .expect("Should not fail if the light client is initialized properly.");
         let latest_header = &latest_consensus_state.header;
 
-        let approval_message = header.light_client_block_view.approval_message();
+        let approval_message = header.light_client_block.approval_message();
 
         // Check the height of the block is higher than the height of the current head.
         if header.height() <= latest_header.height() {
@@ -94,7 +94,7 @@ pub trait BasicNearLightClient {
         // If the epoch of the block is equal to the next_epoch_id of the head,
         // then next_bps is not None.
         if header.epoch_id() == latest_header.next_epoch_id()
-            && header.light_client_block_view.next_bps.is_none()
+            && header.light_client_block.next_bps.is_none()
         {
             return Err(HeaderVerificationError::MissingNextBlockProducersInHead);
         }
@@ -115,7 +115,7 @@ pub trait BasicNearLightClient {
 
         let epoch_block_producers = bps.expect("Should not fail based on previous checking.");
         for (maybe_signature, block_producer) in header
-            .light_client_block_view
+            .light_client_block
             .approvals_after_next
             .iter()
             .zip(epoch_block_producers.iter())
@@ -151,27 +151,23 @@ pub trait BasicNearLightClient {
 
         // If next_bps is not none, sha256(borsh(next_bps)) corresponds to
         // the next_bp_hash in inner_lite.
-        if header.light_client_block_view.next_bps.is_some() {
+        if header.light_client_block.next_bps.is_some() {
             let block_view_next_bps_serialized = header
-                .light_client_block_view
+                .light_client_block
                 .next_bps
                 .as_deref()
                 .expect("Should not fail based on previous checking.")
                 .try_to_vec()
                 .expect("Should not fail based on borsh serialization.");
             if sha256(&block_view_next_bps_serialized).as_slice()
-                != header
-                    .light_client_block_view
-                    .inner_lite
-                    .next_bp_hash
-                    .as_ref()
+                != header.light_client_block.inner_lite.next_bp_hash.as_ref()
             {
                 return Err(HeaderVerificationError::InvalidNextBlockProducersHash);
             }
         }
 
         // Check the `prev_state_root` is the merkle root of `prev_state_root_of_chunks`.
-        if header.light_client_block_view.inner_lite.prev_state_root
+        if header.light_client_block.inner_lite.prev_state_root
             != merklize(&header.prev_state_root_of_chunks).0
         {
             return Err(HeaderVerificationError::InvalidPrevStateRootOfChunks);
@@ -184,15 +180,15 @@ pub trait BasicNearLightClient {
 impl Header {
     ///
     pub fn height(&self) -> Height {
-        self.light_client_block_view.inner_lite.height
+        self.light_client_block.inner_lite.height
     }
     ///
     pub fn epoch_id(&self) -> CryptoHash {
-        self.light_client_block_view.inner_lite.epoch_id
+        self.light_client_block.inner_lite.epoch_id.0
     }
     ///
     pub fn next_epoch_id(&self) -> CryptoHash {
-        self.light_client_block_view.inner_lite.next_epoch_id
+        self.light_client_block.inner_lite.next_epoch_id.0
     }
 }
 
@@ -202,7 +198,7 @@ impl ConsensusState {
         if *epoch_id == self.header.epoch_id() {
             return self.current_bps.clone();
         } else if *epoch_id == self.header.next_epoch_id() {
-            return self.header.light_client_block_view.next_bps.clone();
+            return self.header.light_client_block.next_bps.clone();
         } else {
             return None;
         }
@@ -237,13 +233,41 @@ impl ConsensusState {
         return verify_state_proof(&key, &nodes, value, &root_hash);
     }
 
+    /// Verify that the value of a certain storage key is empty with proof data.
+    ///
+    /// The `proofs` must be the proof data at `height - 1`.
+    pub fn verify_non_membership(
+        &self,
+        key: &[u8],
+        proofs: &Vec<Vec<u8>>,
+    ) -> Result<bool, StateProofVerificationError> {
+        if proofs.len() == 0 {
+            return Err(StateProofVerificationError::MissingProofData);
+        }
+        let root_hash = CryptoHash(sha256(proofs[0].as_ref()));
+        if !self.header.prev_state_root_of_chunks.contains(&root_hash) {
+            return Err(StateProofVerificationError::InvalidRootHashOfProofData);
+        }
+        let mut nodes: Vec<RawTrieNodeWithSize> = Vec::new();
+        let mut proof_index: u16 = 0;
+        for proof in proofs {
+            if let Ok(node) = RawTrieNodeWithSize::decode(proof) {
+                nodes.push(node);
+            } else {
+                return Err(StateProofVerificationError::InvalidProofData { proof_index });
+            }
+            proof_index += 1;
+        }
+        return verify_not_in_state(&key, &nodes, &root_hash);
+    }
+
     /// Verify the given transaction or receipt outcome with proof data.
     pub fn verify_transaction_or_receipt(
         &self,
         outcome_with_id: &ExecutionOutcomeWithId,
         outcome_proof: &MerklePath,
         outcome_root_proof: &MerklePath,
-        block_lite_view: &LightClientBlockLiteView,
+        block_lite_view: &LightClientBlockLite,
         block_proof: &MerklePath,
     ) -> Result<(), TransactionVerificationError> {
         let chunk_outcome_root = compute_root_from_path(
@@ -259,13 +283,7 @@ impl ConsensusState {
         }
         let block_merkle_root =
             compute_root_from_path(block_proof, block_lite_view.current_block_hash());
-        if block_merkle_root
-            == self
-                .header
-                .light_client_block_view
-                .inner_lite
-                .block_merkle_root
-        {
+        if block_merkle_root == self.header.light_client_block.inner_lite.block_merkle_root {
             return Ok(());
         } else {
             return Err(TransactionVerificationError::InvalidBlockProof);

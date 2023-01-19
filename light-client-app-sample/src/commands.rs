@@ -11,12 +11,14 @@
 //! application's configuration file.
 
 mod start;
-mod validate_state;
-mod validate_tx;
+mod verify_membership;
+mod verify_non_membership;
+mod verify_transaction;
 mod view_head;
 
 use self::{
-    start::StartCmd, validate_state::ValidateStateCmd, validate_tx::ValidateTxCmd,
+    start::StartCmd, verify_membership::VerifyMembershipCmd,
+    verify_non_membership::VerifyNonMembershipCmd, verify_transaction::VerifyTransactionCmd,
     view_head::ViewHeadCmd,
 };
 use crate::config::LightClientAppSampleConfig;
@@ -34,10 +36,13 @@ pub enum LightClientAppSampleCmd {
     Start(StartCmd),
     /// View head data at the given height.
     ViewHead(ViewHeadCmd),
-    /// Validate state data corresponding to a storage key of a NEAR account.
-    ValidateState(ValidateStateCmd),
-    /// Validate a certain transaction with latest light client head.
-    ValidateTx(ValidateTxCmd),
+    /// Verify the value of a storage key of a NEAR account with proof data.
+    VerifyMembership(VerifyMembershipCmd),
+    /// Verify that a certain storage key of a NEAR account has NO value with proof data
+    /// and optional block height.
+    VerifyNonMembership(VerifyNonMembershipCmd),
+    /// Verify a certain transaction with latest light client head.
+    VerifyTransaction(VerifyTransactionCmd),
 }
 
 /// Entry point for the application. It needs to be a struct to allow using subcommands!

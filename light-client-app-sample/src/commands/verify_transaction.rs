@@ -1,4 +1,5 @@
-//! `validate-tx` subcommand - to validate a certain transaction at latest light client head.
+//! `verify-transaction` subcommand
+//! Verify a certain transaction with the latest light client head.
 
 use std::convert::TryFrom;
 use std::str::FromStr;
@@ -25,14 +26,14 @@ use near_light_client::BasicNearLightClient;
 ///
 /// <https://docs.rs/clap/>
 #[derive(clap::Parser, Command, Debug)]
-pub struct ValidateTxCmd {
+pub struct VerifyTransactionCmd {
     /// base58 formatted transaction hash
     pub tx_hash: String,
     /// Account id of transaction sender
     pub sender_id: String,
 }
 
-impl Runnable for ValidateTxCmd {
+impl Runnable for VerifyTransactionCmd {
     /// Start the application.
     fn run(&self) {
         abscissa_tokio::run(&APP, validate_transaction(&self.tx_hash, &self.sender_id))
@@ -52,10 +53,7 @@ async fn validate_transaction(tx_hash: &String, sender_id: &String) {
         return;
     }
     let head_state = head.unwrap();
-    let head_hash = head_state
-        .header
-        .light_client_block_view
-        .current_block_hash();
+    let head_hash = head_state.header.light_client_block.current_block_hash();
     let result = rpc_client
         .get_light_client_proof(
             &near_primitives::types::TransactionOrReceiptId::Transaction {

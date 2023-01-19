@@ -6,32 +6,31 @@ use near_light_client::{
     near_types::{
         hash::CryptoHash,
         signature::{ED25519PublicKey, PublicKey, Signature},
-        BlockHeaderInnerLiteView, LightClientBlockLiteView, LightClientBlockView,
-        ValidatorStakeView, ValidatorStakeViewV1,
+        BlockHeaderInnerLite, EpochId, LightClientBlock, LightClientBlockLite, ValidatorStakeView,
+        ValidatorStakeViewV1,
     },
     types::{ConsensusState, Header},
 };
 use near_primitives::views::BlockView;
 
 /// Produce `BlockHeaderInnerLiteView` by its NEAR version
-pub fn produce_block_header_inner_light_view(
+pub fn produce_block_header_inner_light(
     view: &near_primitives::views::BlockHeaderInnerLiteView,
-) -> BlockHeaderInnerLiteView {
-    BlockHeaderInnerLiteView {
+) -> BlockHeaderInnerLite {
+    BlockHeaderInnerLite {
         height: view.height,
-        epoch_id: CryptoHash(view.epoch_id.0),
-        next_epoch_id: CryptoHash(view.next_epoch_id.0),
+        epoch_id: EpochId(CryptoHash(view.epoch_id.0)),
+        next_epoch_id: EpochId(CryptoHash(view.next_epoch_id.0)),
         prev_state_root: CryptoHash(view.prev_state_root.0),
         outcome_root: CryptoHash(view.outcome_root.0),
-        timestamp: view.timestamp,
-        timestamp_nanosec: view.timestamp_nanosec,
+        timestamp: view.timestamp_nanosec,
         next_bp_hash: CryptoHash(view.next_bp_hash.0),
         block_merkle_root: CryptoHash(view.block_merkle_root.0),
     }
 }
 
 /// Produce `Header` by NEAR version of `LightClientBlockView` and `BlockView`.
-pub fn produce_light_client_block_view(
+pub fn produce_light_client_block(
     view: &near_primitives::views::LightClientBlockView,
     block_view: &BlockView,
 ) -> Header {
@@ -40,10 +39,10 @@ pub fn produce_light_client_block_view(
         "Not same height of light client block view and block view."
     );
     Header {
-        light_client_block_view: LightClientBlockView {
+        light_client_block: LightClientBlock {
             prev_block_hash: CryptoHash(view.prev_block_hash.0),
             next_block_inner_hash: CryptoHash(view.next_block_inner_hash.0),
-            inner_lite: produce_block_header_inner_light_view(&view.inner_lite),
+            inner_lite: produce_block_header_inner_light(&view.inner_lite),
             inner_rest_hash: CryptoHash(view.inner_rest_hash.0),
             next_bps: Some(
                 view.next_bps
@@ -88,9 +87,9 @@ pub fn produce_light_client_block_view(
 /// Producer `LightClientBlockLiteView` by its NEAR version
 pub fn produce_light_client_block_lite_view(
     view: &near_primitives::views::LightClientBlockLiteView,
-) -> LightClientBlockLiteView {
-    LightClientBlockLiteView {
-        inner_lite: produce_block_header_inner_light_view(&view.inner_lite),
+) -> LightClientBlockLite {
+    LightClientBlockLite {
+        inner_lite: produce_block_header_inner_light(&view.inner_lite),
         inner_rest_hash: CryptoHash(view.inner_rest_hash.0),
         prev_block_hash: CryptoHash(view.prev_block_hash.0),
     }
@@ -101,14 +100,14 @@ pub fn print_light_client_consensus_state(view: &ConsensusState) {
     status_info!(
         "Info",
         "ConsensusState: {{ prev_block_hash: {}, height: {}, prev_state_root: {}, epoch_id: {}, next_epoch_id: {}, signature_count: {}, current_bps_count: {}, next_bps_count: {} }}",
-        view.header.light_client_block_view.prev_block_hash,
+        view.header.light_client_block.prev_block_hash,
         view.header.height(),
-        view.header.light_client_block_view.inner_lite.prev_state_root,
+        view.header.light_client_block.inner_lite.prev_state_root,
         view.header.epoch_id(),
         view.header.next_epoch_id(),
-        view.header.light_client_block_view.approvals_after_next.len(),
+        view.header.light_client_block.approvals_after_next.len(),
         view.current_bps.as_ref().map_or(0, |bps| bps.len()),
-        view.header.light_client_block_view.next_bps.as_ref().map_or(0, |bps| bps.len()),
+        view.header.light_client_block.next_bps.as_ref().map_or(0, |bps| bps.len()),
     );
 }
 

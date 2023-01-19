@@ -32,27 +32,13 @@ pub enum BlockId {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, BorshDeserialize, BorshSerialize)]
-pub struct BlockHeaderInnerLiteView {
-    pub height: BlockHeight,
-    pub epoch_id: CryptoHash,
-    pub next_epoch_id: CryptoHash,
-    pub prev_state_root: CryptoHash,
-    pub outcome_root: CryptoHash,
-    /// Legacy json number. Should not be used.
-    pub timestamp: u64,
-    pub timestamp_nanosec: u64,
-    pub next_bp_hash: CryptoHash,
-    pub block_merkle_root: CryptoHash,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, BorshDeserialize, BorshSerialize)]
-pub struct LightClientBlockLiteView {
-    pub inner_lite: BlockHeaderInnerLiteView,
+pub struct LightClientBlockLite {
+    pub inner_lite: BlockHeaderInnerLite,
     pub inner_rest_hash: CryptoHash,
     pub prev_block_hash: CryptoHash,
 }
 
-impl LightClientBlockLiteView {
+impl LightClientBlockLite {
     //
     pub fn current_block_hash(&self) -> CryptoHash {
         combine_hash(
@@ -114,26 +100,21 @@ impl ValidatorStakeView {
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize)]
-pub struct LightClientBlockView {
+pub struct LightClientBlock {
     pub prev_block_hash: CryptoHash,
     pub next_block_inner_hash: CryptoHash,
-    pub inner_lite: BlockHeaderInnerLiteView,
+    pub inner_lite: BlockHeaderInnerLite,
     pub inner_rest_hash: CryptoHash,
     pub next_bps: Option<Vec<ValidatorStakeView>>,
     pub approvals_after_next: Vec<Option<Signature>>,
 }
 
-impl LightClientBlockView {
+impl LightClientBlock {
     //
     pub fn current_block_hash(&self) -> CryptoHash {
         combine_hash(
             &combine_hash(
-                &CryptoHash(sha256(
-                    BlockHeaderInnerLite::from(self.inner_lite.clone())
-                        .try_to_vec()
-                        .unwrap()
-                        .as_ref(),
-                )),
+                &CryptoHash(sha256(self.inner_lite.try_to_vec().unwrap().as_ref())),
                 &self.inner_rest_hash,
             ),
             &self.prev_block_hash,
@@ -160,21 +141,6 @@ impl LightClientBlockView {
 pub enum ApprovalInner {
     Endorsement(CryptoHash),
     Skip(BlockHeight),
-}
-
-impl From<BlockHeaderInnerLiteView> for BlockHeaderInnerLite {
-    fn from(view: BlockHeaderInnerLiteView) -> Self {
-        BlockHeaderInnerLite {
-            height: view.height,
-            epoch_id: EpochId(view.epoch_id),
-            next_epoch_id: EpochId(view.next_epoch_id),
-            prev_state_root: view.prev_state_root,
-            outcome_root: view.outcome_root,
-            timestamp: view.timestamp_nanosec,
-            next_bp_hash: view.next_bp_hash,
-            block_merkle_root: view.block_merkle_root,
-        }
-    }
 }
 
 pub fn get_raw_prefix_for_contract_data(account_id: &AccountId, prefix: &[u8]) -> Vec<u8> {

@@ -1,7 +1,7 @@
 //! `start` subcommand - start an instance of NEAR light client.
 
 use crate::config::LightClientAppSampleConfig;
-use crate::light_client::utils::produce_light_client_block_view;
+use crate::light_client::utils::produce_light_client_block;
 use crate::light_client::{near_rpc_client_wrapper::NearRpcClientWrapper, LightClient};
 /// App-local prelude includes `app_reader()`/`app_writer()`/`app_config()`
 /// accessors along with logging macros. Customize as you see fit.
@@ -63,7 +63,7 @@ async fn start_light_client() {
             &Some(light_client_block_view.inner_lite.height),
         )
         .await;
-        let header = produce_light_client_block_view(&light_client_block_view, &block_view);
+        let header = produce_light_client_block(&light_client_block_view, &block_view);
         let current_cs = light_client.get_consensus_state(&light_client.latest_height());
         let current_bps = match current_cs {
             Some(cs) => cs.get_block_producers_of(&header.epoch_id()),

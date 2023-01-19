@@ -76,7 +76,7 @@ impl LightClient {
     pub fn save_failed_head(&self, head: ConsensusState) {
         let file_name = format!(
             "{}/failed_head/{}",
-            self.base_folder, head.header.light_client_block_view.inner_lite.height
+            self.base_folder, head.header.light_client_block.inner_lite.height
         );
         std::fs::write(file_name, head.try_to_vec().unwrap())
             .expect("Failed to save failed light client head to file.");
@@ -114,11 +114,11 @@ fn get_cached_heights(
             if let Ok(bytes) = std::fs::read(path.as_os_str()) {
                 let head = ConsensusState::try_from_slice(&bytes)
                     .expect(format!("Invalid head data file {}.", path.display()).as_str());
-                heights.push(head.header.light_client_block_view.inner_lite.height);
-                let current_block_hash = head.header.light_client_block_view.current_block_hash();
+                heights.push(head.header.light_client_block.inner_lite.height);
+                let current_block_hash = head.header.light_client_block.current_block_hash();
                 result_map.insert(
                     current_block_hash,
-                    head.header.light_client_block_view.inner_lite.height,
+                    head.header.light_client_block.inner_lite.height,
                 );
             }
         }

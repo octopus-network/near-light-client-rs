@@ -1,4 +1,6 @@
-//! `validate-state` subcommand - to validate state data of a contract at a certain height.
+//! `verify-membership` subcommand
+//! Verify the value of a certain storage key of a NEAR account with proof data
+//! and optional block height.
 
 use std::convert::TryFrom;
 use std::ops::Deref;
@@ -13,7 +15,7 @@ use near_light_client::near_types::trie::RawTrieNodeWithSize;
 use near_light_client::BasicNearLightClient;
 use near_primitives::types::AccountId;
 
-/// `validate-state` subcommand
+/// `verify-membership` subcommand
 ///
 /// The `Parser` proc macro generates an option parser based on the struct
 /// definition, and is defined in the `clap` crate. See their documentation
@@ -21,7 +23,7 @@ use near_primitives::types::AccountId;
 ///
 /// <https://docs.rs/clap/>
 #[derive(clap::Parser, Command, Debug)]
-pub struct ValidateStateCmd {
+pub struct VerifyMembershipCmd {
     pub near_account: String,
     /// base64 formatted storage key
     pub storage_key: String,
@@ -30,7 +32,7 @@ pub struct ValidateStateCmd {
     pub block_height: Option<u64>,
 }
 
-impl Runnable for ValidateStateCmd {
+impl Runnable for VerifyMembershipCmd {
     /// Start the application.
     fn run(&self) {
         abscissa_tokio::run(
