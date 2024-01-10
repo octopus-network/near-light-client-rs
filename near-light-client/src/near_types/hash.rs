@@ -1,7 +1,7 @@
 use alloc::string::{String, ToString};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt::{self, Debug, Display};
-use sha2::Digest;
+use sha256::digest;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, BorshDeserialize, BorshSerialize, Hash)]
 pub struct CryptoHash(pub [u8; 32]);
@@ -17,16 +17,15 @@ impl CryptoHash {
     }
     /// Calculates hash of given bytes.
     pub fn hash_bytes(bytes: &[u8]) -> CryptoHash {
-        CryptoHash(sha2::Sha256::digest(bytes).into())
+        CryptoHash(hex::decode(digest(bytes)).unwrap().try_into().unwrap())
     }
     /// Calculates hash of borsh-serialised representation of an object.
     ///
     /// Note that if you have a slice of objects to serialise, you might
     /// prefer using [`Self::hash_borsh_slice`] instead.
     pub fn hash_borsh<T: BorshSerialize>(value: &T) -> CryptoHash {
-        let mut hasher = sha2::Sha256::default();
-        BorshSerialize::serialize(value, &mut hasher).unwrap();
-        CryptoHash(hasher.finalize().into())
+        let hash_str = digest(borsh::to_vec(value).unwrap());
+        CryptoHash(hex::decode(hash_str).unwrap().try_into().unwrap())
     }
 }
 
@@ -67,7 +66,7 @@ impl Display for CryptoHash {
 }
 
 pub fn sha256(data: &[u8]) -> [u8; 32] {
-    sha2::Sha256::digest(data).into()
+    hex::decode(digest(data)).unwrap().try_into().unwrap()
 }
 
 pub fn combine_hash(hash1: &CryptoHash, hash2: &CryptoHash) -> CryptoHash {

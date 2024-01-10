@@ -53,7 +53,7 @@ impl NearRpcClientWrapper {
             || async {
                 info_with_time!("Try querying {:?} ...", method);
                 let result = self.rpc_client.call(method).await;
-                tracing::debug!(
+                tracing::info!(
                     target: "workspaces",
                     "Querying RPC with {:?} resulted in {:?}",
                     method,

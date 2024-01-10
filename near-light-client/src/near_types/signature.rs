@@ -1,18 +1,15 @@
-use alloc::string::ToString;
-use borsh::{
-    maybestd::format,
-    maybestd::io::{Error, ErrorKind, Write},
-    BorshDeserialize, BorshSerialize,
-};
+use alloc::{format, string::ToString, vec::Vec};
+use borsh::io::{Error, ErrorKind, Write};
+use borsh::{BorshDeserialize, BorshSerialize};
 use ed25519_dalek::Verifier;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ED25519PublicKey(pub [u8; ed25519_dalek::PUBLIC_KEY_LENGTH]);
 
 #[derive(Debug, Clone)]
 pub struct Secp256K1PublicKey([u8; 64]);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PublicKey {
     /// 256 bit elliptic curve based public-key.
     ED25519(ED25519PublicKey),
@@ -24,9 +21,9 @@ pub enum KeyType {
 }
 
 /// Signature container supporting different curves.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Signature {
-    ED25519(ed25519_dalek::Signature),
+    ED25519(Vec<u8>),
 }
 
 impl Signature {
@@ -34,10 +31,16 @@ impl Signature {
     /// Also if public key doesn't match on the curve returns `false`.
     pub fn verify(&self, data: &[u8], public_key: &PublicKey) -> bool {
         match (&self, public_key) {
-            (Signature::ED25519(signature), PublicKey::ED25519(public_key)) => {
+            (Signature::ED25519(sig_bytes), PublicKey::ED25519(public_key)) => {
                 match ed25519_dalek::PublicKey::from_bytes(&public_key.0) {
                     Err(_) => false,
-                    Ok(public_key) => public_key.verify(data, signature).is_ok(),
+                    Ok(public_key) => {
+                        if let Ok(signature) = ed25519_dalek::Signature::from_bytes(sig_bytes) {
+                            public_key.verify(data, &signature).is_ok()
+                        } else {
+                            false
+                        }
+                    }
                 }
             }
         }
@@ -45,7 +48,7 @@ impl Signature {
 }
 
 impl TryFrom<u8> for KeyType {
-    type Error = borsh::maybestd::io::Error;
+    type Error = Error;
 
     fn try_from(value: u8) -> Result<Self, Error> {
         match value {
@@ -71,12 +74,12 @@ impl BorshSerialize for PublicKey {
 }
 
 impl BorshDeserialize for PublicKey {
-    fn deserialize(buf: &mut &[u8]) -> Result<Self, Error> {
-        let key_type = KeyType::try_from(<u8 as BorshDeserialize>::deserialize(buf)?)
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> Result<Self, Error> {
+        let key_type = KeyType::try_from(u8::deserialize_reader(reader)?)
             .map_err(|err| Error::new(ErrorKind::InvalidData, err.to_string()))?;
         match key_type {
             KeyType::ED25519 => Ok(PublicKey::ED25519(ED25519PublicKey(
-                BorshDeserialize::deserialize(buf)?,
+                BorshDeserialize::deserialize_reader(reader)?,
             ))),
         }
     }
@@ -87,7 +90,7 @@ impl BorshSerialize for Signature {
         match self {
             Signature::ED25519(signature) => {
                 BorshSerialize::serialize(&0u8, writer)?;
-                writer.write_all(&signature.to_bytes())?;
+                writer.write_all(signature)?;
             }
         }
         Ok(())
@@ -95,17 +98,14 @@ impl BorshSerialize for Signature {
 }
 
 impl BorshDeserialize for Signature {
-    fn deserialize(buf: &mut &[u8]) -> Result<Self, Error> {
-        let key_type = KeyType::try_from(<u8 as BorshDeserialize>::deserialize(buf)?)
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> Result<Self, Error> {
+        let key_type = KeyType::try_from(u8::deserialize_reader(reader)?)
             .map_err(|err| Error::new(ErrorKind::InvalidData, err.to_string()))?;
         match key_type {
             KeyType::ED25519 => {
                 let array: [u8; ed25519_dalek::SIGNATURE_LENGTH] =
-                    BorshDeserialize::deserialize(buf)?;
-                Ok(Signature::ED25519(
-                    ed25519_dalek::Signature::from_bytes(&array)
-                        .map_err(|e| Error::new(ErrorKind::InvalidData, e.to_string()))?,
-                ))
+                    BorshDeserialize::deserialize_reader(reader)?;
+                Ok(Signature::ED25519(array.to_vec()))
             }
         }
     }

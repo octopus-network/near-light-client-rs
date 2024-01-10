@@ -10,7 +10,7 @@ use crate::light_client::{near_rpc_client_wrapper::NearRpcClientWrapper, LightCl
 /// accessors along with logging macros. Customize as you see fit.
 use crate::{info_with_time, prelude::*};
 use abscissa_core::{Command, Runnable};
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshDeserialize;
 use near_light_client::near_types::hash::CryptoHash;
 use near_light_client::near_types::merkle::MerklePathItem;
 use near_light_client::near_types::transaction::{
@@ -83,11 +83,7 @@ async fn validate_transaction(tx_hash: &String, sender_id: &String) {
                 tokens_burnt: result.outcome_proof.outcome.tokens_burnt,
                 executor_id: result.outcome_proof.outcome.executor_id.to_string(),
                 status: ExecutionStatus::try_from_slice(
-                    result
-                        .outcome_proof
-                        .outcome
-                        .status
-                        .try_to_vec()
+                    borsh::to_vec(&result.outcome_proof.outcome.status)
                         .unwrap()
                         .as_ref(),
                 )
@@ -99,14 +95,14 @@ async fn validate_transaction(tx_hash: &String, sender_id: &String) {
             .proof
             .iter()
             .map(|proof| {
-                MerklePathItem::try_from_slice(proof.try_to_vec().unwrap().as_ref()).unwrap()
+                MerklePathItem::try_from_slice(borsh::to_vec(&proof).unwrap().as_ref()).unwrap()
             })
             .collect(),
         &result
             .outcome_root_proof
             .iter()
             .map(|proof| {
-                MerklePathItem::try_from_slice(proof.try_to_vec().unwrap().as_ref()).unwrap()
+                MerklePathItem::try_from_slice(borsh::to_vec(&proof).unwrap().as_ref()).unwrap()
             })
             .collect(),
         &produce_light_client_block_lite_view(&result.block_header_lite),
@@ -114,7 +110,7 @@ async fn validate_transaction(tx_hash: &String, sender_id: &String) {
             .block_proof
             .iter()
             .map(|proof| {
-                MerklePathItem::try_from_slice(proof.try_to_vec().unwrap().as_ref()).unwrap()
+                MerklePathItem::try_from_slice(borsh::to_vec(&proof).unwrap().as_ref()).unwrap()
             })
             .collect(),
     ) {

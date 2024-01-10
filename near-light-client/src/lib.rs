@@ -1,4 +1,12 @@
-#![cfg_attr(not(feature = "std"), no_std)]
+#![no_std]
+#![deny(
+    warnings,
+    trivial_casts,
+    trivial_numeric_casts,
+    unused_import_braces,
+    unused_qualifications,
+    rust_2018_idioms
+)]
 
 extern crate alloc;
 
@@ -6,7 +14,6 @@ pub mod near_types;
 pub mod types;
 
 use alloc::vec::Vec;
-use borsh::BorshSerialize;
 use near_types::{
     hash::{sha256, CryptoHash},
     merkle::{compute_root_from_path, merklize, MerklePath},
@@ -51,6 +58,7 @@ pub enum StateProofVerificationError {
     MissingBranchNodeValue { proof_index: u16 },
     MissingBranchNodeChildHash { proof_index: u16 },
     InvalidProofDataLength,
+    SpecifiedKeyHasValueInState,
 }
 
 /// Error type for transaction verification.
@@ -152,13 +160,14 @@ pub trait BasicNearLightClient {
         // If next_bps is not none, sha256(borsh(next_bps)) corresponds to
         // the next_bp_hash in inner_lite.
         if header.light_client_block.next_bps.is_some() {
-            let block_view_next_bps_serialized = header
-                .light_client_block
-                .next_bps
-                .as_deref()
-                .expect("Should not fail based on previous checking.")
-                .try_to_vec()
-                .expect("Should not fail based on borsh serialization.");
+            let block_view_next_bps_serialized = borsh::to_vec(
+                header
+                    .light_client_block
+                    .next_bps
+                    .as_deref()
+                    .expect("Should not fail based on previous checking."),
+            )
+            .expect("Should not fail based on borsh serialization.");
             if sha256(&block_view_next_bps_serialized).as_slice()
                 != header.light_client_block.inner_lite.next_bp_hash.as_ref()
             {
@@ -240,7 +249,7 @@ impl ConsensusState {
         &self,
         key: &[u8],
         proofs: &Vec<Vec<u8>>,
-    ) -> Result<bool, StateProofVerificationError> {
+    ) -> Result<(), StateProofVerificationError> {
         if proofs.len() == 0 {
             return Err(StateProofVerificationError::MissingProofData);
         }

@@ -77,7 +77,7 @@ async fn verify_non_membership(
         &get_raw_prefix_for_contract_data(&near_account, key_bytes.as_ref()),
         &proofs,
     ) {
-        Ok(result) => status_ok!("Finished", "Validation result: {}", result),
+        Ok(()) => status_ok!("Finished", "Validation succeeded"),
         Err(err) => status_err!(format!("{:?}", err)),
     }
 }

@@ -3,3 +3,17 @@ members = [
     "light-client-app-sample",
     "near-light-client",
 ]
+resolver = "2"
+
+[workspace.dependencies]
+borsh = { version = "1.1", default-features = false, features = ["derive"] }
+bs58 = "0.4"
+byteorder = "1.4"
+ed25519-dalek = { version = "1.0", features = ["alloc"] }
+elastic-array = { version = "0.11", default-features = false }
+sha256 = "1.5"
+hex = "0.4"
+near-crypto = "0.19"
+near-jsonrpc-client = "0.7"
+near-jsonrpc-primitives = "0.19"
+near-primitives = "0.19"

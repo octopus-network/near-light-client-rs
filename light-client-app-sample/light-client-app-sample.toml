@@ -1,5 +1,6 @@
 [near_rpc]
-rpc_endpoint = "https://rpc.testnet.near.org"
+# rpc_endpoint = "https://rpc.testnet.near.org"
+rpc_endpoint = "https://endpoints.omniatech.io/v1/near/testnet/public"
 
 [state_data]
 data_folder = "./tmp/chain_data/testnet"

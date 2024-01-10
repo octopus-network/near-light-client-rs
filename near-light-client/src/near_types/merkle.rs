@@ -1,6 +1,6 @@
 use super::hash::{combine_hash, CryptoHash};
-use alloc::vec::Vec;
-use borsh::{maybestd::vec, BorshDeserialize, BorshSerialize};
+use alloc::{vec, vec::Vec};
+use borsh::{BorshDeserialize, BorshSerialize};
 
 /// Hash used by a struct implementing the Merkle tree.
 pub type MerkleHash = CryptoHash;
@@ -37,7 +37,7 @@ pub fn merklize<T: BorshSerialize>(arr: &[T]) -> (MerkleHash, Vec<MerklePath>) {
             if i % 2 == 0 {
                 if i + 1 < arr_len {
                     vec![MerklePathItem {
-                        hash: hashes[(i + 1) as usize],
+                        hash: hashes[i + 1],
                         direction: Direction::Right,
                     }]
                 } else {
@@ -45,7 +45,7 @@ pub fn merklize<T: BorshSerialize>(arr: &[T]) -> (MerkleHash, Vec<MerklePath>) {
                 }
             } else {
                 vec![MerklePathItem {
-                    hash: hashes[(i - 1) as usize],
+                    hash: hashes[i - 1],
                     direction: Direction::Left,
                 }]
             }
@@ -68,7 +68,7 @@ pub fn merklize<T: BorshSerialize>(arr: &[T]) -> (MerkleHash, Vec<MerklePath>) {
             if len > 1 {
                 if i % 2 == 0 {
                     for j in 0..counter {
-                        let index = ((i + 1) * counter + j) as usize;
+                        let index = (i + 1) * counter + j;
                         if index < arr.len() {
                             paths[index].push(MerklePathItem {
                                 hash,
@@ -78,7 +78,7 @@ pub fn merklize<T: BorshSerialize>(arr: &[T]) -> (MerkleHash, Vec<MerklePath>) {
                     }
                 } else {
                     for j in 0..counter {
-                        let index = ((i - 1) * counter + j) as usize;
+                        let index = (i - 1) * counter + j;
                         if index < arr.len() {
                             paths[index].push(MerklePathItem {
                                 hash,

@@ -61,7 +61,7 @@ impl LightClient {
     ///
     pub fn set_consensus_state(&mut self, height: &Height, consensus_state: ConsensusState) {
         let file_name = format!("{}/{}/{}", self.base_folder, HEAD_DATA_SUB_FOLDER, height);
-        std::fs::write(file_name, consensus_state.try_to_vec().unwrap())
+        std::fs::write(file_name, borsh::to_vec(&consensus_state).unwrap())
             .expect("Failed to save light client state to file.");
     }
     ///
@@ -78,7 +78,7 @@ impl LightClient {
             "{}/failed_head/{}",
             self.base_folder, head.header.light_client_block.inner_lite.height
         );
-        std::fs::write(file_name, head.try_to_vec().unwrap())
+        std::fs::write(file_name, borsh::to_vec(&head).unwrap())
             .expect("Failed to save failed light client head to file.");
     }
     ///

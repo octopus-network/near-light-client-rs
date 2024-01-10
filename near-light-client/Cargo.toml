@@ -7,9 +7,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-borsh = "0.9"
-bs58 = "0.4"
-byteorder = "1.4"
-ed25519-dalek = "1"
-elastic-array = {version = "0.11", default-features = false }
-sha2 = "0.10"
+borsh = { workspace = true }
+bs58 = { workspace = true }
+byteorder = { workspace = true }
+ed25519-dalek = { workspace = true }
+elastic-array = { workspace = true }
+sha256 = { workspace = true }
+hex = { workspace = true }

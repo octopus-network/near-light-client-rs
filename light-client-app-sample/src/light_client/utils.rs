@@ -1,6 +1,5 @@
 //! Some util functions related to NEAR light client.
 //!
-
 use abscissa_core::status_info;
 use near_light_client::{
     near_types::{
@@ -69,8 +68,10 @@ pub fn produce_light_client_block(
                 .approvals_after_next
                 .iter()
                 .map(|f| {
-                    f.as_ref().map(|s| match s {
-                        near_crypto::Signature::ED25519(data) => Signature::ED25519(data.clone()),
+                    f.as_ref().map(|s| match **s {
+                        near_crypto::Signature::ED25519(data) => {
+                            Signature::ED25519(data.to_bytes().to_vec())
+                        }
                         _ => panic!("Unsupported signature in approvals after next."),
                     })
                 })

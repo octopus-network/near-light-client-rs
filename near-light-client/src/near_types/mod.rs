@@ -2,19 +2,18 @@
 //!
 //! Most of the codes in this module are ported from `nearcore` v1.30.0
 //! and are applied by necessary changes to remove std dependencies.
-
-pub mod hash;
-pub mod merkle;
-pub mod signature;
-pub mod transaction;
-pub mod trie;
-
 use self::{
     hash::{combine_hash, sha256, CryptoHash},
     signature::{PublicKey, Signature},
 };
 use alloc::{string::String, vec::Vec};
 use borsh::{BorshDeserialize, BorshSerialize};
+
+pub mod hash;
+pub mod merkle;
+pub mod signature;
+pub mod transaction;
+pub mod trie;
 
 /// This column id is used when storing Key-Value data from a contract on an `account_id`.
 pub const CONTRACT_DATA: u8 = 9;
@@ -44,8 +43,7 @@ impl LightClientBlockLite {
         combine_hash(
             &combine_hash(
                 &CryptoHash(sha256(
-                    BlockHeaderInnerLite::from(self.inner_lite.clone())
-                        .try_to_vec()
+                    borsh::to_vec(&BlockHeaderInnerLite::from(self.inner_lite.clone()))
                         .unwrap()
                         .as_ref(),
                 )),
@@ -114,7 +112,7 @@ impl LightClientBlock {
     pub fn current_block_hash(&self) -> CryptoHash {
         combine_hash(
             &combine_hash(
-                &CryptoHash(sha256(self.inner_lite.try_to_vec().unwrap().as_ref())),
+                &CryptoHash(sha256(borsh::to_vec(&self.inner_lite).unwrap().as_ref())),
                 &self.inner_rest_hash,
             ),
             &self.prev_block_hash,
@@ -127,8 +125,7 @@ impl LightClientBlock {
     //
     pub fn approval_message(&self) -> Vec<u8> {
         [
-            ApprovalInner::Endorsement(self.next_block_hash())
-                .try_to_vec()
+            borsh::to_vec(&ApprovalInner::Endorsement(self.next_block_hash()))
                 .unwrap()
                 .as_ref(),
             (self.inner_lite.height + 2).to_le_bytes().as_ref(),
